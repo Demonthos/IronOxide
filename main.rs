@@ -1,58 +1,65 @@
+use std::collections::HashMap;
+use std::any::{Any, TypeId};
 use ::std::cmp::min;
 use raylib::prelude::*;
 use rand::Rng;
-
 
 const RADIUS: f32 = 10.0f32;
 const COLLISION_FRICTION: f32 = 0.99f32;
 const WALL_COLLISION_FRICTION: f32 = 0.5f32;
 const FRICTION: f32 = 0.8f32;
-const WINDOW_SIZE: [i32; 2] = [1024, 960];
+const WINDOW_SIZE: [i32; 2] = [600, 600];
 const INITIAL_VELOCITY: f32 = 200f32;
 const GRAVITY: f32 = 0.25f32;
 
+struct CircleCollider{
+    radius: f32,
+}
+
+impl CircleCollider {
+    fn collide_walls(&mut self, pos: &Vector2){
+        if pos.x < self.radius{
+            pos.x = self.radius;
+        }
+        if pos.x > WINDOW_SIZE[0] as f32 - self.radius{
+            pos.x = WINDOW_SIZE[0] as f32 - self.radius;
+        }
+        if pos.y < self.radius{
+            pos.y = self.radius;
+        }
+        if pos.y > WINDOW_SIZE[1] as f32 - self.radius{
+            pos.y = WINDOW_SIZE[1] as f32 - self.radius;
+        }
+    }
+
+    fn check_collision(&self, pos: &Vector2, other: &CircleCollider, other_pos: &Vector2) -> Option<Vector2>{
+        let collision_vec = pos - other_pos;
+        if collision_vec.length() <= (self.radius + other.radius){
+            return Some(collision_vec);
+        }
+        None
+    }
+}
+
 #[derive(Debug, Clone)]
-struct Particle{
-    position: Vector2,
+struct Physics {
     velocity: Vector2,
     mass: f32,
-    radius: f32,
-    color: Color,
     frozen_time: i32
 }
 
-impl Particle {
-    fn new(mass: f32) -> Particle{
-        Particle{position: Vector2::new(0f32, 0f32), velocity: Vector2::new(0f32, 0f32), mass: mass, radius: RADIUS*mass, color: Color{r: 0, g: 0, b: 0, a: u8::MAX}, frozen_time: 0}
+impl Physics {
+    fn new(mass: f32) -> Physics{
+        Physics{velocity: Vector2::new(0f32, 0f32), mass: mass, frozen_time: 0}
     }
 
-    fn update(&mut self, delta: f32){
-        self.position += self.velocity*delta;
+    fn update(&mut self, pos: &mut Vector2, delta: f32){
+        *pos += self.velocity*delta;
         self.velocity *= f32::powf(FRICTION, delta);
-        self.color = Color{r: (2f32*self.velocity.length()) as u8, g: 0, b: 0, a: u8::MAX};
     }
 
-    fn collide_walls(&mut self){
-        if self.position.x < self.radius{
-            self.position.x = self.radius;
-            self.velocity.x = -self.velocity.x*WALL_COLLISION_FRICTION;
-        }
-        if self.position.x > WINDOW_SIZE[0] as f32 - self.radius{
-            self.position.x = WINDOW_SIZE[0] as f32 - self.radius;
-            self.velocity.x = -self.velocity.x*WALL_COLLISION_FRICTION;
-        }
-        if self.position.y < self.radius{
-            self.position.y = self.radius;
-            self.velocity.y = -self.velocity.y*WALL_COLLISION_FRICTION;
-        }
-        if self.position.y > WINDOW_SIZE[1] as f32 - self.radius{
-            self.position.y = WINDOW_SIZE[1] as f32 - self.radius;
-            self.velocity.y = -self.velocity.y*WALL_COLLISION_FRICTION;
-        }
-    }
-
-    fn resolve_collision(&mut self, other: &mut Particle) -> bool{
-        let colliding_with = self.check_collision(other);
+    fn resolve_collision(&mut self, pos: &Vector2, other: &mut Physics, other_pos: &Vector2) -> bool{
+        let colliding_with = self.check_collision(pos, other, other_pos);
         if colliding_with != None {
             let collision_vec = colliding_with.unwrap();
             let normalized_vec = collision_vec.normalized();
@@ -78,20 +85,47 @@ impl Particle {
         }
         false
     }
-
-    fn check_collision(&self, other: &Particle) -> Option<Vector2>{
-        let collision_vec = self.position - other.position;
-        if collision_vec.length() <= (self.radius + other.radius){
-            return Some(collision_vec);
-        }
-        None
-    }
 }
-    impl PartialEq for Particle {
+    impl PartialEq for Physics {
         fn eq(&self, other: &Self) -> bool {
             self.position == other.position && self.velocity == other.velocity
         }
     }
+
+#[derive(Debug)]
+struct Entity {
+    position: Vector2,
+    components: HashMap<TypeId, Box<dyn Any>>
+}
+
+impl Entity {
+    fn add_component(&mut self, new_component: Box<dyn Any>) {
+        self.components.insert(new_component.type_id(), new_component);
+    }
+}
+
+struct Particle{
+    entity: Entity,
+}
+
+impl Particle {
+    fn new(physicsComponent: Physics, radius: f32, color: Color) -> Particle{
+        let new_particle = Particle{Entity{position, HashMap::new()}};
+        new_particle.entity.add_component(physicsComponent);
+        new_particle.entity.add_component();
+        new_particle
+    }
+    
+    fn update(&mut self){
+        self.color = Color{r: (2f32*self.velocity.length()) as u8, g: 0, b: 0, a: u8::MAX};
+    }
+}
+    impl PartialEq for Particle {
+        fn eq(&self, other: &Self) -> bool {
+            self.physics == other.physics && self.collider == other.collider && self.color == other.color
+        }
+    }
+
 
 fn main() {
     let (mut rl, thread) = raylib::init()
