@@ -66,3 +66,17 @@ pub fn get_aabb_union(first: &[Vector2; 2], second: &[Vector2; 2]) -> [Vector2; 
         Vector2::new(first[1].x.max(second[1].x), first[1].y.max(second[1].y)),
     ]
 }
+
+pub fn get_aabb_intersection(first: &[Vector2; 2], second: &[Vector2; 2]) -> [Vector2; 2] {
+    [
+        Vector2::new(first[0].x.max(second[0].x), first[0].y.max(second[0].y)),
+        Vector2::new(first[1].x.min(second[1].x), first[1].y.min(second[1].y)),
+    ]
+}
+
+pub fn is_aabb_colliding(first: &[Vector2; 2], second: &[Vector2; 2]) -> bool {
+    first[1].x >= second[0].x
+        && first[0].x <= second[1].x
+        && first[1].y >= second[0].y
+        && first[0].y <= second[1].y
+}
