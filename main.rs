@@ -2,6 +2,7 @@ use hecs::World;
 use rand::Rng;
 use raylib::prelude::*;
 use std::collections::HashMap;
+use std::rc::Rc;
 
 mod bvh;
 mod collider;
@@ -19,6 +20,7 @@ const SCREEN_BOUNDS: [f32; 4] = [0f32, 0f32, WINDOW_SIZE[0] as f32, WINDOW_SIZE[
 const INITIAL_VELOCITY: f32 = 200f32;
 const GRAVITY: f32 = 0.5f32;
 
+#[derive(Clone)]
 struct Particle {
     position: Vector2,
     physics: physics::Physics,
@@ -104,44 +106,12 @@ fn main() {
         }
 
         if particles.len() > 0 {
-            for i in 1..particles.len() + 1 {
-                let (l, r) = particles.split_at_mut(i);
-                let p = &mut l[l.len() - 1];
-                p.physics.update(&mut p.position, delta);
+            // for i in 1..particles.len() + 1 {
+            //     let (l, r) = particles.split_at_mut(i);
+            //     let p = &mut l[l.len() - 1];
+            //     p.physics.update(&mut p.position, delta);
 
-                for p2 in &mut *r {
-                    let overlap_vec =
-                        p.collider
-                            .get_collision(&p.position, &p2.position, &p2.collider);
-                    if let Some(unwraped) = overlap_vec {
-                        p.physics.resolve_collision(
-                            &mut p.position,
-                            &mut p2.position,
-                            &mut p2.physics,
-                            unwraped,
-                        );
-                        // break;
-                    }
-                }
-
-                let overlap_vec = p.collider.get_collision_bounds(&p.position, SCREEN_BOUNDS);
-                if let Some(unwraped) = overlap_vec {
-                    p.physics.collide_bound(&mut p.position, unwraped);
-                }
-            }
-
-            // let mut colliders_vec = Vec::new();
-            // let mut pos_vec = Vec::new();
-            // // let pos_map = HashMap::new();
-            // for (i, p) in particles.iter().enumerate() {
-            //     pos_vec.push(p.position.clone());
-            //     // pos_map.insert(&p.position, i);
-            //     colliders_vec.push(&p.collider);
-            // }
-            // let bvh_tree = bvh::BVHTree::new(colliders_vec, pos_vec);
-
-            // for p in particles {
-            //     for p2 in bvh_tree.query_rect(p.collider.get_bounding_box(&p.position)) {
+            //     for p2 in &mut *r {
             //         let overlap_vec =
             //             p.collider
             //                 .get_collision(&p.position, &p2.position, &p2.collider);
@@ -152,14 +122,53 @@ fn main() {
             //                 &mut p2.physics,
             //                 unwraped,
             //             );
-            //         }
-
-            //         let overlap_vec = p.collider.get_collision_bounds(&p.position, SCREEN_BOUNDS);
-            //         if let Some(unwraped) = overlap_vec {
-            //             p.physics.collide_bound(&mut p.position, unwraped);
+            //             // break;
             //         }
             //     }
+
+            //     let overlap_vec = p.collider.get_collision_bounds(&p.position, SCREEN_BOUNDS);
+            //     if let Some(unwraped) = overlap_vec {
+            //         p.physics.collide_bound(&mut p.position, unwraped);
+            //     }
             // }
+
+            let mut data = Vec::new();
+
+            // costly
+            let old_particles = particles.clone();
+
+            for (i, p) in old_particles.iter().enumerate() {
+                data.push((&p.collider, p.position.clone(), i));
+            }
+
+            let bvh_tree = bvh::BVHTree::new(data);
+            // 815 50fps static or 815 moving
+            for i in 1..particles.len() + 1 {
+                let (l, r) = particles.split_at_mut(i);
+                let p = &mut l[l.len() - 1];
+                p.physics.update(&mut p.position, delta);
+                for (_, p2_index) in bvh_tree.query_rect(p.collider.get_bounding_box(&p.position)) {
+                    if p2_index >= &i {
+                        // println!("{:?}", p2_index);
+                        let p2 = &mut r[*p2_index - i];
+                        let overlap_vec =
+                            p.collider
+                                .get_collision(&p.position, &p2.position, &p2.collider);
+                        if let Some(unwraped) = overlap_vec {
+                            p.physics.resolve_collision(
+                                &mut p.position,
+                                &mut p2.position,
+                                &mut p2.physics,
+                                unwraped,
+                            );
+                        }
+                    }
+                }
+                let overlap_vec = p.collider.get_collision_bounds(&p.position, SCREEN_BOUNDS);
+                if let Some(unwraped) = overlap_vec {
+                    p.physics.collide_bound(&mut p.position, unwraped);
+                }
+            }
         }
 
         let mut d = rl.begin_drawing(&thread);

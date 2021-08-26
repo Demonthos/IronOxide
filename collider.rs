@@ -1,5 +1,6 @@
 use raylib::math::Vector2;
 
+#[derive(Debug, Clone)]
 pub enum Collider {
     CircleCollider { radius: f32 },
     RectangeCollider { size: Vector2 },

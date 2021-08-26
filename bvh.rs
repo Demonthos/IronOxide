@@ -1,60 +1,67 @@
 use crate::collider;
 use raylib::core::math::Vector2;
 
-fn split_at_mid(
-    v: &mut Vec<Vector2>,
+fn split_at_mid<'a, T: std::clone::Clone>(
+    mut v: Vec<(&'a collider::Collider, raylib::prelude::Vector2, T)>,
     x_axis: bool,
-) -> (&mut [Vector2], &mut Vector2, &mut [Vector2]) {
+) -> (
+    Vec<(&'a collider::Collider, Vector2, T)>,
+    Vec<(&'a collider::Collider, Vector2, T)>,
+) {
     // let mut v_clone = v.clone();
-    let result: (&mut [Vector2], &mut Vector2, &mut [Vector2]);
-    let half_size = v.len() / 2usize;
+    let result: (
+        &mut [(&collider::Collider, Vector2, T)],
+        &mut (&collider::Collider, Vector2, T),
+        &mut [(&collider::Collider, Vector2, T)],
+    );
+    let half_size = (v.len() / 2usize) - 1;
     if x_axis {
-        result =
-            v.select_nth_unstable_by(half_size, |vec1, vec2| vec1.x.partial_cmp(&vec2.x).unwrap());
+        result = v.select_nth_unstable_by(half_size, |vec1, vec2| {
+            vec1.1.x.partial_cmp(&vec2.1.x).unwrap()
+        });
     } else {
-        result =
-            v.select_nth_unstable_by(half_size, |vec1, vec2| vec1.y.partial_cmp(&vec2.y).unwrap());
+        result = v.select_nth_unstable_by(half_size, |vec1, vec2| {
+            vec1.1.y.partial_cmp(&vec2.1.y).unwrap()
+        });
     }
-    result
+    let mut start = result.0.to_vec();
+    start.push(result.1.clone());
+    let end = result.2.to_vec();
+    assert!(start.len() + end.len() == v.len());
+    // println!("{:?}", v.len());
+    // println!("{:?}", start.len());
+    // println!("{:?}", end.len());
+    (start, end)
 }
 
-enum Node<'a> {
-    Branch([Vector2; 2], [Box<Node<'a>>; 2]),
-    Fruit([Vector2; 2], &'a collider::Collider),
+enum Node<'a, T> {
+    Branch([Vector2; 2], [Box<Node<'a, T>>; 2]),
+    Fruit([Vector2; 2], &'a collider::Collider, T),
 }
 
-impl Node<'_> {
-    fn new(colliders: Vec<&collider::Collider>, positions: Vec<Vector2>) -> Node {
-        if colliders.len() <= 1 {
-            return Node::Fruit(colliders[0].get_bounding_box(&positions[0]), colliders[0]);
+impl<T: std::clone::Clone> Node<'_, T> {
+    fn new(mut data: Vec<(&collider::Collider, Vector2, T)>) -> Node<T> {
+        if data.len() <= 1 {
+            let owned = data.remove(0);
+            return Node::Fruit(owned.0.get_bounding_box(&owned.1), owned.0, owned.2);
         } else {
-            let half_size = colliders.len() / 2usize;
-            let node1 = Node::new(
-                colliders[..half_size].to_vec(),
-                positions[..half_size].to_vec(),
-            );
-            let aabb1: [Vector2; 2];
-            match node1 {
-                Node::Branch(aabb, _) => aabb1 = aabb.clone(),
-                Node::Fruit(aabb, _) => aabb1 = aabb.clone(),
+            // let half_size = data.len() / 2usize;
+            let mut total_bb = data[0].0.get_bounding_box(&data[0].1);
+            for (collider, position, _) in &data {
+                total_bb =
+                    collider::get_aabb_union(&total_bb, &collider.get_bounding_box(&position));
             }
-            let node2 = Node::new(
-                colliders[half_size..].to_vec(),
-                positions[half_size..].to_vec(),
+            let (first_half, second_half) = split_at_mid(
+                data,
+                (total_bb[1].x - total_bb[0].x) > (total_bb[1].y - total_bb[0].y),
             );
-            let aabb2: [Vector2; 2];
-            match node2 {
-                Node::Branch(aabb, _) => aabb2 = aabb.clone(),
-                Node::Fruit(aabb, _) => aabb2 = aabb.clone(),
-            }
-            return Node::Branch(
-                collider::get_aabb_union(&aabb1, &aabb2),
-                [Box::new(node1), Box::new(node2)],
-            );
+            let node1 = Node::new(first_half);
+            let node2 = Node::new(second_half);
+            return Node::Branch(total_bb, [Box::new(node1), Box::new(node2)]);
         }
     }
 
-    fn get_children(&self) -> Vec<&collider::Collider> {
+    fn get_children(&self) -> Vec<(&collider::Collider, &T)> {
         let mut sum_vec = Vec::new();
         match self {
             Node::Branch(_, children) => {
@@ -62,14 +69,14 @@ impl Node<'_> {
                     sum_vec.append(&mut c.get_children());
                 }
             }
-            Node::Fruit(_, collider) => {
-                sum_vec.push(collider);
+            Node::Fruit(_, collider, other_data) => {
+                sum_vec.push((collider, other_data));
             }
         }
         return sum_vec;
     }
 
-    fn query_point(&self, p: Vector2) -> Vec<&collider::Collider> {
+    fn query_point(&self, p: Vector2) -> Vec<(&collider::Collider, &T)> {
         let mut result = Vec::new();
         match self {
             Node::Branch(bb, children) => {
@@ -79,16 +86,16 @@ impl Node<'_> {
                     }
                 }
             }
-            Node::Fruit(bb, collider) => {
+            Node::Fruit(bb, collider, other_data) => {
                 if bb[0].x < p.x && bb[1].x > p.x && bb[0].y < p.y && bb[1].y > p.y {
-                    result.push(collider);
+                    result.push((collider, other_data));
                 }
             }
         }
         result
     }
 
-    fn query_rect(&self, r: [Vector2; 2]) -> Vec<&collider::Collider> {
+    fn query_rect(&self, r: [Vector2; 2]) -> Vec<(&collider::Collider, &T)> {
         let mut result = Vec::new();
         match self {
             Node::Branch(bb, children) => {
@@ -98,9 +105,9 @@ impl Node<'_> {
                     }
                 }
             }
-            Node::Fruit(bb, collider) => {
+            Node::Fruit(bb, collider, other_data) => {
                 if collider::is_aabb_colliding(bb, &r) {
-                    result.push(collider);
+                    result.push((collider, other_data));
                 }
             }
         }
@@ -108,26 +115,26 @@ impl Node<'_> {
     }
 }
 
-pub struct BVHTree<'a> {
-    root_node: Node<'a>,
+pub struct BVHTree<'a, T> {
+    root_node: Node<'a, T>,
 }
 
-impl BVHTree<'_> {
-    pub fn new(colliders: Vec<&collider::Collider>, positions: Vec<Vector2>) -> BVHTree {
+impl<T: std::clone::Clone> BVHTree<'_, T> {
+    pub fn new(data: Vec<(&collider::Collider, Vector2, T)>) -> BVHTree<T> {
         BVHTree {
-            root_node: Node::new(colliders, positions),
+            root_node: Node::new(data),
         }
     }
 
-    pub fn get_all(&self) -> Vec<&collider::Collider> {
+    pub fn get_all(&self) -> Vec<(&collider::Collider, &T)> {
         self.root_node.get_children()
     }
 
-    pub fn query_point(&self, p: Vector2) -> Vec<&collider::Collider> {
+    pub fn query_point(&self, p: Vector2) -> Vec<(&collider::Collider, &T)> {
         self.root_node.query_point(p)
     }
 
-    pub fn query_rect(&self, r: [Vector2; 2]) -> Vec<&collider::Collider> {
+    pub fn query_rect(&self, r: [Vector2; 2]) -> Vec<(&collider::Collider, &T)> {
         self.root_node.query_rect(r)
     }
 }
