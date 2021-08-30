@@ -1,8 +1,7 @@
 use hecs::World;
+
 use rand::Rng;
 use raylib::prelude::*;
-use std::collections::HashMap;
-use std::rc::Rc;
 
 mod bvh;
 mod collider;
@@ -12,13 +11,17 @@ mod utils;
 // mod tests;
 
 const RADIUS: f32 = 10.0f32;
-const COLLISION_FRICTION: f32 = 0.98f32;
+const COLLISION_FRICTION: f32 = 0.998f32;
 const WALL_COLLISION_FRICTION: f32 = 0.5f32;
 const FRICTION: f32 = 0.998f32;
-const WINDOW_SIZE: [i32; 2] = [800, 800];
+const WINDOW_SIZE: [i32; 2] = [1400, 1000];
 const SCREEN_BOUNDS: [f32; 4] = [0f32, 0f32, WINDOW_SIZE[0] as f32, WINDOW_SIZE[1] as f32];
-const INITIAL_VELOCITY: f32 = 200f32;
-const GRAVITY: f32 = 0.5f32;
+const INITIAL_VELOCITY: f32 = 400f32;
+// const GRAVITY: f32 = 1f32;
+const GRAVITY: f32 = 0f32;
+const MAX_PENITRATION: f32 = 0.01f32;
+const MAX_PENITRATION_SQ: f32 = MAX_PENITRATION * MAX_PENITRATION;
+const MIN_BHV_UPDATE_TIME: f32 = 0.05f32;
 
 #[derive(Clone)]
 struct Particle {
@@ -31,15 +34,25 @@ struct Particle {
 impl Particle {
     fn new(position: Vector2, radius: f32) -> Particle {
         Particle {
-            position: position,
+            position,
             physics: physics::Physics::new(radius),
             collider: collider::Collider::CircleCollider { radius },
             renderer: renderer::Renderer::CircleRenderer {
-                radius: radius,
+                radius,
                 color: Color::new(0, 0, 0, 255),
             },
         }
-        // Particle{position: position, physics: physics::Physics::new(radius), collider: collider::Collider::RectangeCollider{size: Vector2::new(radius*2f32, radius*2f32)}, renderer: renderer::Renderer::RectangeRenderer{size: Vector2::new(radius*2f32, radius*2f32), color: Color::new(0, 0, 0, 255)}}
+        // Particle {
+        //     position: position,
+        //     physics: physics::Physics::new(radius),
+        //     collider: collider::Collider::RectangeCollider {
+        //         size: Vector2::new(radius * 2f32, radius * 2f32),
+        //     },
+        //     renderer: renderer::Renderer::RectangeRenderer {
+        //         size: Vector2::new(radius * 2f32, radius * 2f32),
+        //         color: Color::new(0, 0, 0, 255),
+        //     },
+        // }
     }
 }
 
@@ -54,20 +67,28 @@ fn main() {
     let mut rng = rand::thread_rng();
     // let mut world = World::new();
 
+    let mut time_since_bvh_update = 0f32;
+    let mut bvh_tree = None;
+
     while !rl.window_should_close() {
         let mouse_pos = rl.get_mouse_position();
 
         let delta = rl.get_frame_time();
 
+        if rl.is_key_pressed(KeyboardKey::KEY_R) {
+            particles = Vec::new();
+        }
+
         if rl.is_key_pressed(KeyboardKey::KEY_SPACE) {
             timer = rl.get_time();
         }
-        // if particles.len() < 400{
-        if rl.is_key_down(KeyboardKey::KEY_SPACE) {
-            if rl.get_time() - timer > 0.05 {
+
+        if rl.get_fps() > 200 {
+            // if rl.is_key_down(KeyboardKey::KEY_SPACE) {
+            if rl.get_time() - timer > 0.01 {
                 let mut p = Particle::new(
                     Vector2::new(rng.gen::<f32>() * WINDOW_SIZE[0] as f32, 0f32),
-                    5f32 + RADIUS * ((rng.gen::<u8>() % 32) as f32) / 32f32,
+                    5f32 + RADIUS * ((rng.gen::<u8>() % 32) as f32) / 64f32,
                 );
                 let mut rand_vec = Vector2::new(0f32, 0f32);
                 while rand_vec.length_sqr() == 0f32 {
@@ -77,13 +98,14 @@ fn main() {
                 rand_vec.scale(INITIAL_VELOCITY);
                 p.physics.velocity = rand_vec;
                 particles.push(p);
+                time_since_bvh_update = 1f32 + MIN_BHV_UPDATE_TIME;
                 timer = rl.get_time();
             }
         }
 
         for mut p in &mut particles {
             if rl.is_mouse_button_down(MouseButton::MOUSE_LEFT_BUTTON) {
-                p.physics.velocity += (mouse_pos - p.position).normalized() * 2f32;
+                p.physics.velocity += (mouse_pos - p.position).normalized() * 10f32;
             }
             p.physics.velocity.y += GRAVITY;
             p.physics.velocity *= FRICTION;
@@ -105,71 +127,71 @@ fn main() {
             }
         }
 
-        if particles.len() > 0 {
-            // for i in 1..particles.len() + 1 {
-            //     let (l, r) = particles.split_at_mut(i);
-            //     let p = &mut l[l.len() - 1];
-            //     p.physics.update(&mut p.position, delta);
+        if !particles.is_empty() {
+            time_since_bvh_update += delta;
 
-            //     for p2 in &mut *r {
-            //         let overlap_vec =
-            //             p.collider
-            //                 .get_collision(&p.position, &p2.position, &p2.collider);
-            //         if let Some(unwraped) = overlap_vec {
-            //             p.physics.resolve_collision(
-            //                 &mut p.position,
-            //                 &mut p2.position,
-            //                 &mut p2.physics,
-            //                 unwraped,
-            //             );
-            //             // break;
-            //         }
-            //     }
+            for p in &mut particles {
+                p.physics.update(&mut p.position, delta);
+            }
 
-            //     let overlap_vec = p.collider.get_collision_bounds(&p.position, SCREEN_BOUNDS);
-            //     if let Some(unwraped) = overlap_vec {
-            //         p.physics.collide_bound(&mut p.position, unwraped);
-            //     }
-            // }
-
-            let mut data = Vec::new();
-
+            // particles.shuffle(&mut rng);
             // costly
             let old_particles = particles.clone();
 
-            for (i, p) in old_particles.iter().enumerate() {
-                data.push((&p.collider, p.position.clone(), i));
+            if time_since_bvh_update > MIN_BHV_UPDATE_TIME {
+                bvh_tree = Some(create_bvh(&old_particles));
+                // println!("{:?}", time_since_bvh_update);
+                time_since_bvh_update = 0f32;
+            } else if let Some(ref mut bvh) = bvh_tree {
+                for i in 0..(particles.len() - 1) {
+                    let o = &old_particles[i];
+                    let n = &particles[i];
+                    bvh.update(
+                        (o.collider.get_bounding_box(&o.position), i as u32),
+                        (n.collider.get_bounding_box(&n.position), i as u32),
+                    );
+                }
             }
 
-            let bvh_tree = bvh::BVHTree::new(data);
-            // 815 50fps static or 815 moving
-            for i in 1..particles.len() + 1 {
-                let (l, r) = particles.split_at_mut(i);
-                let p = &mut l[l.len() - 1];
-                p.physics.update(&mut p.position, delta);
-                for (_, p2_index) in bvh_tree.query_rect(p.collider.get_bounding_box(&p.position)) {
-                    if p2_index >= &i {
-                        // println!("{:?}", p2_index);
-                        let p2 = &mut r[*p2_index - i];
-                        let overlap_vec =
-                            p.collider
-                                .get_collision(&p.position, &p2.position, &p2.collider);
-                        if let Some(unwraped) = overlap_vec {
-                            p.physics.resolve_collision(
-                                &mut p.position,
-                                &mut p2.position,
-                                &mut p2.physics,
-                                unwraped,
-                            );
+            if let Some(ref bvh) = bvh_tree {
+                // 1323 50fps
+                // 5193 50fps
+                for i in 1..particles.len() + 1 {
+                    let (l, r) = particles.split_at_mut(i);
+                    let p = &mut l[l.len() - 1];
+                    let collisions = bvh.query_rect(p.collider.get_bounding_box(&p.position));
+
+                    for p2_index in &collisions {
+                        if p2_index >= &&(i as u32) {
+                            // println!("{:?}", p2_index);
+                            let p2m = &mut r[(**p2_index) as usize - i];
+                            let p2 = &old_particles[(**p2_index) as usize];
+                            // change to collision between 2 copys
+                            let overlap_vec =
+                                p.collider
+                                    .get_collision(&p.position, &p2.position, &p2.collider);
+                            if let Some(unwraped) = overlap_vec {
+                                let l = unwraped.length_sqr();
+                                if l > MAX_PENITRATION_SQ {
+                                    p.physics.resolve_collision(
+                                        &mut p.position,
+                                        &mut p2m.position,
+                                        &mut p2m.physics,
+                                        unwraped,
+                                    );
+                                }
+                            }
                         }
                     }
-                }
-                let overlap_vec = p.collider.get_collision_bounds(&p.position, SCREEN_BOUNDS);
-                if let Some(unwraped) = overlap_vec {
-                    p.physics.collide_bound(&mut p.position, unwraped);
+                    let overlap_vec = p.collider.get_collision_bounds(&p.position, SCREEN_BOUNDS);
+                    if let Some(unwraped) = overlap_vec {
+                        p.physics.collide_bound(&mut p.position, unwraped);
+                    }
                 }
             }
         }
+
+        let l_m_down = rl.is_mouse_button_down(MouseButton::MOUSE_RIGHT_BUTTON);
 
         let mut d = rl.begin_drawing(&thread);
         d.clear_background(Color::WHITE);
@@ -190,15 +212,17 @@ fn main() {
                 }
             }
             p.renderer.render(&mut d, &p.position);
-            let bb = p.collider.get_bounding_box(&p.position);
-            let bb_size = bb[1] - bb[0];
-            d.draw_rectangle_lines(
-                bb[0].x as i32,
-                bb[0].y as i32,
-                bb_size.x as i32,
-                bb_size.y as i32,
-                Color::new(0, 255, 0, 100),
-            )
+            if l_m_down {
+                let bb = p.collider.get_bounding_box(&p.position);
+                let bb_size = bb[1] - bb[0];
+                d.draw_rectangle_lines(
+                    bb[0].x as i32,
+                    bb[0].y as i32,
+                    bb_size.x as i32,
+                    bb_size.y as i32,
+                    Color::new(0, 255, 0, 100),
+                )
+            }
             // d.draw_circle_v(p.position, 10f32, Color::new(255, 0, 255, 0));
         }
 
@@ -211,4 +235,19 @@ fn main() {
             Color::BLACK,
         );
     }
+}
+
+fn create_bvh(particles: &[Particle]) -> bvh::BVHTree {
+    let mut data = Vec::new();
+
+    for (i, p) in particles.iter().enumerate() {
+        data.push((
+            &p.collider,
+            p.position,
+            p.collider.get_bounding_box(&p.position),
+            i as u32,
+        ));
+    }
+
+    bvh::BVHTree::new(data)
 }

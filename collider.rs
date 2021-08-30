@@ -18,17 +18,23 @@ impl Collider {
                 Collider::CircleCollider {
                     radius: other_radius,
                 } => {
-                    let collision_vec = (other_pos.clone() + Vector2::one() * (*other_radius))
-                        - (pos.clone() + Vector2::one() * (*radius));
-                    let dist = collision_vec.length();
+                    let collision_vec = (*other_pos + Vector2::one() * (*other_radius))
+                        - (*pos + Vector2::one() * (*radius));
+                    let mut dist = collision_vec.length_sqr();
                     let sum_r = radius + other_radius;
-                    if dist <= sum_r {
+                    if dist <= sum_r * sum_r {
+                        dist = dist.sqrt();
                         return Some(collision_vec.normalized() * (sum_r - dist));
                     }
                 }
                 Collider::RectangeCollider { size } => {}
             },
-            Collider::RectangeCollider { size } => {}
+            Collider::RectangeCollider { size } => match other {
+                Collider::CircleCollider {
+                    radius: other_radius,
+                } => {}
+                Collider::RectangeCollider { size: other_size } => {}
+            },
         }
         None
     }
@@ -51,12 +57,12 @@ impl Collider {
     }
 
     pub fn get_bounding_box(&self, pos: &Vector2) -> [Vector2; 2] {
-        let pos_clone = pos.clone();
+        let pos_clone = *pos;
         match self {
             Collider::CircleCollider { radius } => {
                 [pos_clone, pos_clone + Vector2::one() * (*radius) * 2f32]
             }
-            Collider::RectangeCollider { size } => [pos_clone, pos_clone + size.clone()],
+            Collider::RectangeCollider { size } => [pos_clone, pos_clone + *size],
         }
     }
 }
@@ -80,4 +86,11 @@ pub fn is_aabb_colliding(first: &[Vector2; 2], second: &[Vector2; 2]) -> bool {
         && first[0].x <= second[1].x
         && first[1].y >= second[0].y
         && first[0].y <= second[1].y
+}
+
+pub fn is_aabb_inside(first: &[Vector2; 2], second: &[Vector2; 2]) -> bool {
+    first[1].x >= second[1].x
+        && first[0].x <= second[0].x
+        && first[1].y >= second[1].y
+        && first[0].y <= second[0].y
 }
