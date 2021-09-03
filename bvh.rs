@@ -67,7 +67,7 @@ impl Node {
             // let half_size = data.len() / 2usize;
             let mut total_bb = data[0].2;
             for (_, _, bb, _, _) in &data {
-                total_bb = collider::get_aabb_union(&total_bb, &bb);
+                total_bb = collider::get_aabb_union(&total_bb, bb);
             }
             let (first_half, second_half) = split_at_mid(
                 data,
@@ -120,7 +120,7 @@ impl Node {
                 let mut contains_layer = false;
                 if let Some(layers) = layers_option {
                     for layer in l {
-                        if layers.contains(&layer) {
+                        if layers.contains(layer) {
                             contains_layer = true;
                             break;
                         }
@@ -128,10 +128,13 @@ impl Node {
                 } else {
                     contains_layer = true;
                 }
-                if contains_layer {
-                    if bb[0].x < p.x && bb[1].x > p.x && bb[0].y < p.y && bb[1].y > p.y {
-                        result.push(other_data);
-                    }
+                if contains_layer
+                    && bb[0].x < p.x
+                    && bb[1].x > p.x
+                    && bb[0].y < p.y
+                    && bb[1].y > p.y
+                {
+                    result.push(other_data);
                 }
             }
         }
@@ -164,7 +167,7 @@ impl Node {
                 let mut contains_layer = false;
                 if let Some(layers) = layers_option {
                     for layer in l {
-                        if layers.contains(&layer) {
+                        if layers.contains(layer) {
                             contains_layer = true;
                             break;
                         }
@@ -172,10 +175,8 @@ impl Node {
                 } else {
                     contains_layer = true;
                 }
-                if contains_layer {
-                    if collider::is_aabb_colliding(bb, &r) {
-                        result.push(other_data);
-                    }
+                if contains_layer && collider::is_aabb_colliding(bb, &r) {
+                    result.push(other_data);
                 }
             }
         }

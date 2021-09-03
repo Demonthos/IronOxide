@@ -1,6 +1,7 @@
 use hecs::World;
 use rand::Rng;
 use raylib::prelude::*;
+use rayon::prelude::*;
 use std::collections::HashSet;
 
 mod bvh;
@@ -41,17 +42,6 @@ impl Particle {
                 color: Color::new(0, 0, 0, 255),
             },
         }
-        // Particle {
-        //     position: position,
-        //     physics: physics::Physics::new(radius),
-        //     collider: collider::Collider::RectangeCollider {
-        //         size: Vector2::new(radius * 2f32, radius * 2f32),
-        //     },
-        //     renderer: renderer::Renderer::RectangeRenderer {
-        //         size: Vector2::new(radius * 2f32, radius * 2f32),
-        //         color: Color::new(0, 0, 0, 255),
-        //     },
-        // }
     }
 }
 
@@ -136,9 +126,9 @@ fn main() {
         if !particles.is_empty() {
             time_since_bvh_update += delta;
 
-            for p in &mut particles {
-                p.physics.update(&mut p.position, delta);
-            }
+            particles
+                .par_iter_mut()
+                .for_each(|p| p.physics.update(&mut p.position, delta));
 
             // particles.shuffle(&mut rng);
             // costly
@@ -162,7 +152,6 @@ fn main() {
             if let Some(ref bvh) = bvh_tree {
                 // 1323 50fps
                 // 5193 50fps
-                // make sure collisions are not being resolved twice!!!
                 for i in 1..particles.len() + 1 {
                     let hs = if i < length / 2 { &hs1 } else { &hs2 };
                     // let hs = &hs1;
@@ -174,6 +163,7 @@ fn main() {
                         bvh.query_rect(old_p.collider.get_bounding_box(&old_p.position), Some(hs));
 
                     for p2_index in &collisions {
+                        // make sure collisions are not handled twice
                         if p2_index >= &&(i as u32) {
                             // println!("{:?}", p2_index);
                             let p2m = &mut r[(**p2_index) as usize - i];
@@ -193,10 +183,13 @@ fn main() {
                             }
                         }
                     }
-                    let overlap_vec = p.collider.get_collision_bounds(&p.position, SCREEN_BOUNDS);
-                    if let Some(unwraped) = overlap_vec {
-                        p.physics.collide_bound(&mut p.position, unwraped);
-                    }
+                }
+            }
+
+            for p in &mut particles {
+                let overlap_vec = p.collider.get_collision_bounds(&p.position, SCREEN_BOUNDS);
+                if let Some(unwraped) = overlap_vec {
+                    p.physics.collide_bound(&mut p.position, unwraped);
                 }
             }
         }
