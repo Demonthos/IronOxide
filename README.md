@@ -8,6 +8,6 @@ Goals:
   3) easy to understand
 
 Todo:
-- [ ] use hecs entity component system
+- [ ] use specs entity component system
 - [ ] parrellize physics
 - [ ] add collision callbacks
