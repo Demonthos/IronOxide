@@ -1,6 +1,9 @@
 use raylib::math::Vector2;
+use specs::{Component, VecStorage};
 
-#[derive(Debug, Clone)]
+/// handles narrow phase collisions, and generating aabbs.
+#[derive(Debug, Clone, Component)]
+#[storage(VecStorage)]
 pub enum Collider {
     CircleCollider { radius: f32 },
     RectangeCollider { size: Vector2 },

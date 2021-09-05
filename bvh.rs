@@ -206,6 +206,8 @@ impl Node {
     }
 }
 
+/// This handles broad phase optimization of collisions.
+/// It is a bounding volume hiarchy constructed top-down with 2 subdivisions.
 pub struct BVHTree {
     root_node: Node,
 }
