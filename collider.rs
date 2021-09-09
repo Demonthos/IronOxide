@@ -21,13 +21,17 @@ impl Collider {
                 Collider::CircleCollider {
                     radius: other_radius,
                 } => {
-                    let collision_vec = (*other_pos + Vector2::one() * (*other_radius))
+                    let mut collision_vec = (*other_pos + Vector2::one() * (*other_radius))
                         - (*pos + Vector2::one() * (*radius));
                     let mut dist = collision_vec.length_sqr();
                     let sum_r = radius + other_radius;
                     if dist <= sum_r * sum_r {
                         dist = dist.sqrt();
-                        return Some(collision_vec.normalized() * (sum_r - dist));
+                        collision_vec.normalize();
+                        if collision_vec.x.is_nan() || collision_vec.y.is_nan() {
+                            return None;
+                        }
+                        return Some(collision_vec * (sum_r - dist));
                     }
                 }
                 Collider::RectangeCollider { size } => {}

@@ -1,5 +1,7 @@
 use crate::collider;
+
 use raylib::core::math::Vector2;
+use rayon::prelude::*;
 use std::collections::HashSet;
 
 fn split_at_mid<'a>(
@@ -34,6 +36,7 @@ fn split_at_mid<'a>(
         &mut [(&collider::Collider, Vector2, [Vector2; 2], u32, HashSet<i8>)],
     );
     let half_size = (v.len() / 2usize) - 1;
+
     if x_axis {
         result = v.select_nth_unstable_by(half_size, |vec1, vec2| {
             vec1.1.x.partial_cmp(&vec2.1.x).unwrap()
@@ -79,7 +82,7 @@ impl Node {
         }
     }
 
-    fn get_children(&self) -> Vec<&u32> {
+    fn get_children(&self) -> Vec<u32> {
         let mut sum_vec = Vec::new();
         match self {
             Node::Branch(_, children) => {
@@ -88,13 +91,13 @@ impl Node {
                 }
             }
             Node::Fruit(_, other_data, _) => {
-                sum_vec.push(other_data);
+                sum_vec.push(*other_data);
             }
         }
         sum_vec
     }
 
-    fn query_point(&self, p: Vector2, layers_option: Option<&HashSet<i8>>) -> Vec<&u32> {
+    fn query_point(&self, p: Vector2, layers_option: Option<&HashSet<i8>>) -> Vec<u32> {
         let mut result = Vec::new();
         match self {
             Node::Branch(bb, children) => {
@@ -134,14 +137,19 @@ impl Node {
                     && bb[0].y < p.y
                     && bb[1].y > p.y
                 {
-                    result.push(other_data);
+                    result.push(*other_data);
                 }
             }
         }
         result
     }
 
-    fn query_rect(&self, r: [Vector2; 2], layers_option: Option<&HashSet<i8>>) -> Vec<&u32> {
+    fn query_rect(
+        &self,
+        r: [Vector2; 2],
+        layers_option: Option<&HashSet<i8>>,
+        depth: i32,
+    ) -> Vec<u32> {
         let mut result = Vec::new();
         match self {
             Node::Branch(bb, children) => {
@@ -158,30 +166,145 @@ impl Node {
                 //     }
                 // }
                 if collider::is_aabb_colliding(bb, &r) {
+                    // if depth > 1 {
                     for child in children {
-                        result.append(&mut child.query_rect(r, layers_option));
+                        result.append(&mut child.query_rect(r, layers_option, depth));
                     }
+                    // } else {
+                    //     result.par_extend(
+                    //         children
+                    //             .into_par_iter()
+                    //             .map(|child| child.query_rect(r, layers_option, depth + 1))
+                    //             .flatten(),
+                    //     )
+                    // }
                 }
             }
             Node::Fruit(bb, other_data, l) => {
-                let mut contains_layer = false;
-                if let Some(layers) = layers_option {
-                    for layer in l {
-                        if layers.contains(layer) {
-                            contains_layer = true;
-                            break;
-                        }
-                    }
+                let contains_layer = if let Some(layers) = layers_option {
+                    l.into_iter().any(|layer| layers.contains(layer))
                 } else {
-                    contains_layer = true;
-                }
+                    true
+                };
                 if contains_layer && collider::is_aabb_colliding(bb, &r) {
-                    result.push(other_data);
+                    result.push(*other_data);
                 }
             }
         }
         result
     }
+
+    // tries to make collision checking faster by recursively checking collision in parallel. Fails
+    // fn query_rect_batched<'a>(
+    //     &self,
+    //     rects: &Vec<&(i32, [Vector2; 2], Option<&'a HashSet<i8>>)>,
+    //     depth: i32,
+    // ) -> HashMap<i32, Vec<u32>> {
+    //     fn merge_hm(
+    //         mut map1: HashMap<i32, Vec<u32>>,
+    //         mut map2: HashMap<i32, Vec<u32>>,
+    //     ) -> HashMap<i32, Vec<u32>> {
+    //         if map1.len() < map2.len() {
+    //             let temp = map1;
+    //             map1 = map2;
+    //             map2 = temp;
+    //         }
+
+    //         for (k1, v1) in map1.iter_mut() {
+    //             if map2.contains_key(k1) {
+    //                 v1.append(&mut map2.remove(k1).unwrap());
+    //             }
+    //         }
+
+    //         for (k2, v2) in map2.drain() {
+    //             if !map1.contains_key(&k2) {
+    //                 map1.insert(k2, v2);
+    //             }
+    //         }
+
+    //         // let k: HashSet<_> = map1.keys().cloned().collect();
+    //         // map1.extend(map2.drain().filter(|(k2, _)| !k.contains(&k2)));
+    //         // map1.par_extend(map2.par_drain().filter(|(k2, _)| !k.contains(&k2)));
+    //         // map1.par_extend(map2.par_drain().filter(|(k2, _)| !map1.contains_key(&k2)));
+
+    //         // map1.par_extend(map2.into_par_iter().filter(|(e, _)| !map1.contains_key(e)));
+    //         map1
+    //     }
+
+    //     let mut results: HashMap<i32, Vec<u32>> = HashMap::new();
+    //     let iter_rects = rects.into_par_iter();
+    //     match self {
+    //         Node::Branch(bb, children) => {
+    //             // if let Some(layers) = layers_option {
+    //             //     let mut contains_layer = false;
+    //             //     for layer in l {
+    //             //         if layers.contains(&layer) {
+    //             //             contains_layer = true;
+    //             //             break;
+    //             //         }
+    //             //     }
+    //             //     if !contains_layer {
+    //             //         return result;
+    //             //     }
+    //             // }
+    //             let colliding = iter_rects
+    //                 .filter_map(|rect| {
+    //                     if collider::is_aabb_colliding(bb, &rect.1) {
+    //                         Some(*rect)
+    //                     } else {
+    //                         None
+    //                     }
+    //                 })
+    //                 .collect::<Vec<_>>();
+    //             results = merge_hm(
+    //                 results,
+    //                 children
+    //                     .par_iter()
+    //                     .map(|child| {
+    //                         child
+    //                             .read()
+    //                             .unwrap()
+    //                             .query_rect_batched(&colliding, depth + 1)
+    //                     })
+    //                     .reduce(|| HashMap::new(), |hm1, hm2| merge_hm(hm1, hm2)),
+    //             );
+    //             // results = merge_hm(
+    //             //     results,
+    //             //     children
+    //             //         .iter()
+    //             //         .map(|child| child.read().unwrap().query_rect_batched(&colliding))
+    //             //         .reduce(|hm1, hm2| merge_hm(hm1, hm2)).unwrap(),
+    //             // );
+    //         }
+    //         Node::Fruit(bb, other_data, l) => {
+    //             results = merge_hm(
+    //                 results,
+    //                 iter_rects
+    //                     .map(|rect| {
+    //                         let rect_bb = rect.1;
+    //                         let mut result = Vec::new();
+    //                         let mut contains_layer = false;
+    //                         if let Some(layers) = rect.2 {
+    //                             for layer in l {
+    //                                 if layers.contains(layer) {
+    //                                     contains_layer = true;
+    //                                     break;
+    //                                 }
+    //                             }
+    //                         } else {
+    //                             contains_layer = true;
+    //                         }
+    //                         if contains_layer && collider::is_aabb_colliding(bb, &rect_bb) {
+    //                             result.push(*other_data);
+    //                         }
+    //                         (rect.0, result)
+    //                     })
+    //                     .collect(),
+    //             );
+    //         }
+    //     }
+    //     results
+    // }
 
     fn update(&mut self, old: ([Vector2; 2], u32), new: ([Vector2; 2], u32)) -> bool {
         match self {
@@ -221,19 +344,31 @@ impl BVHTree {
         }
     }
 
-    pub fn get_all(&self) -> Vec<&u32> {
+    pub fn get_all(&self) -> Vec<u32> {
         self.root_node.get_children()
     }
 
-    pub fn query_point(&self, p: Vector2, layers_option: Option<&HashSet<i8>>) -> Vec<&u32> {
+    pub fn query_point(&self, p: Vector2, layers_option: Option<&HashSet<i8>>) -> Vec<u32> {
         self.root_node.query_point(p, layers_option)
     }
 
-    pub fn query_rect(&self, r: [Vector2; 2], layers_option: Option<&HashSet<i8>>) -> Vec<&u32> {
-        self.root_node.query_rect(r, layers_option)
+    pub fn query_rect(&self, r: [Vector2; 2], layers_option: Option<&HashSet<i8>>) -> Vec<u32> {
+        self.root_node.query_rect(r, layers_option, 0)
     }
 
     pub fn update(&mut self, old: ([Vector2; 2], u32), new: ([Vector2; 2], u32)) {
         self.root_node.update(old, new);
     }
+
+    // pub fn query_rect_batched<'a>(
+    //     &self,
+    //     rects: &Vec<(i32, [Vector2; 2], Option<&'a HashSet<i8>>)>,
+    // ) -> HashMap<i32, Vec<u32>> {
+    //     superluminal_perf::begin_event("batched");
+    //     let r = self
+    //         .root_node
+    //         .query_rect_batched(&(rects.into_iter().collect()), 0);
+    //     superluminal_perf::end_event();
+    //     r
+    // }
 }

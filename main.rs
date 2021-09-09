@@ -3,6 +3,7 @@ extern crate lazy_static;
 use rand::Rng;
 use raylib::prelude::*;
 use rayon::prelude::*;
+use rayon::slice::ParallelSlice;
 use specs::DispatcherBuilder;
 use specs::{
     Builder, Entities, Join, ParJoin, Read, ReadStorage, System, World, WorldExt, Write,
@@ -20,8 +21,8 @@ mod utils;
 const RADIUS: f32 = 10.0f32;
 const COLLISION_FRICTION: f32 = 0.998f32;
 // const COLLISION_FRICTION: f32 = 1f32;
-// const FRICTION: f32 = 0.998f32;
-const FRICTION: f32 = 1f32;
+const FRICTION: f32 = 0.998f32;
+// const FRICTION: f32 = 1f32;
 const WINDOW_SIZE: [i32; 2] = [1400, 1000];
 const SCREEN_BOUNDS: [f32; 4] = [0f32, 0f32, WINDOW_SIZE[0] as f32, WINDOW_SIZE[1] as f32];
 const INITIAL_VELOCITY: f32 = 400f32;
@@ -126,37 +127,68 @@ impl<'a> System<'a> for CollideEnities {
         // costly
         let old_positions: Vec<Vector2> =
             (&entity_data).into_iter().map(|t| t.0 .0.clone()).collect();
+        let old_physics: Vec<physics::Physics> =
+            (&entity_data).into_iter().map(|t| t.2.clone()).collect();
+        let old_collidors: Vec<collider::Collider> =
+            (&entity_data).into_iter().map(|t| t.1.clone()).collect();
 
         if let Some(ref bvh) = *bvh_tree {
-            // 1323 50fps
-            // 5193 50fps
-            for i in 1..entity_data.len() + 1 {
-                let hs = &*HS1;
-                // let hs = &HS1;
+            // let mut d = Vec::new();
+            // for (i, (e, old_pos)) in entity_data.into_iter().zip(old_positions).enumerate() {
+            //     let hs = &*HS1;
+            //     d.push((i as i32, e.1.get_bounding_box(&old_pos), Some(hs)));
+            // }
+            // bvh.query_rect_batched(&d);
 
-                let (l, r) = entity_data.split_at_mut(i);
-                let p = &mut l[l.len() - 1];
-                let old_pos = &old_positions[i - 1];
+            // for i in 1..entity_data.len() + 1 {
+            //     let hs = &*HS1;
+
+            //     let (l, r) = entity_data.split_at_mut(i);
+            //     let p = &mut l[l.len() - 1];
+            //     let old_pos = &old_positions[i - 1];
+            //     let collisions = bvh.query_rect(p.1.get_bounding_box(&old_pos), Some(hs));
+
+            //     for p2_index in &collisions {
+            //         // make sure collisions are not handled twice
+            //         if p2_index >= &(i as u32) {
+            //             // println!("{:?}", p2_index);
+            //             let p2m = &mut r[(*p2_index) as usize - i];
+            //             let p2_pos = &old_positions[(*p2_index) as usize];
+            //             let overlap_vec = p.1.get_collision(&old_pos, &p2_pos, &p2m.1);
+            //             if let Some(unwraped) = overlap_vec {
+            //                 p.2.resolve_collision(&mut p.0 .0, &mut p2m.0 .0, &mut p2m.2, unwraped);
+            //             }
+            //         }
+            //     }
+            // }
+
+            entity_data.par_iter_mut().enumerate().for_each(|(i, p)| {
+                let hs = &*HS1;
+                let old_pos = &old_positions[i];
                 let collisions = bvh.query_rect(p.1.get_bounding_box(&old_pos), Some(hs));
 
                 for p2_index in &collisions {
-                    // make sure collisions are not handled twice
-                    if p2_index >= &&(i as u32) {
-                        // println!("{:?}", p2_index);
-                        let p2m = &mut r[(**p2_index) as usize - i];
-                        let p2_pos = &old_positions[(**p2_index) as usize];
-                        let overlap_vec = p.1.get_collision(&old_pos, &p2_pos, &p2m.1);
-                        if let Some(unwraped) = overlap_vec {
-                            p.2.resolve_collision(&mut p.0 .0, &mut p2m.0 .0, &mut p2m.2, unwraped);
-                        }
+                    // if p2_index >= &(i as u32) {
+                    // println!("{:?}", p2_index);
+                    let p2_pos = &old_positions[(*p2_index) as usize];
+                    let p2_phys = &old_physics[(*p2_index) as usize];
+                    let p2_col = &old_collidors[(*p2_index) as usize];
+                    let overlap_vec = p.1.get_collision(&old_pos, &p2_pos, p2_col);
+                    if let Some(unwraped) = overlap_vec {
+                        // println!("{:#?}, {:#?}, {:#?}", p.0 .0, p2_pos, unwraped);
+                        // make sure collisions are not handled twice, but we calculate it twice
+                        p.2.resolve_collision_single(&mut p.0 .0, &p2_pos, &p2_phys, unwraped);
                     }
+                    // }
                 }
-            }
+            });
         }
     }
 }
 
 /// update loop
+// 1323 particles 50fps
+// 5193 particles 50fps
 fn main() {
     let (mut rl, thread) = raylib::init()
         .size(WINDOW_SIZE[0], WINDOW_SIZE[1])
