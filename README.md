@@ -8,6 +8,6 @@ Goals:
   3) easy to understand
 
 Todo:
-- [ ] use specs entity component system
-- [ ] parrellize physics
+- [x] use specs entity component system
+- [x] parrellize physics
 - [ ] add collision callbacks
