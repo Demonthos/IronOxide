@@ -1,8 +1,8 @@
 use crate::collider;
-
 use raylib::core::math::Vector2;
 use rayon::prelude::*;
 use std::collections::HashSet;
+use std::mem;
 
 fn split_at_mid<'a>(
     mut v: Vec<(
@@ -56,6 +56,7 @@ fn split_at_mid<'a>(
     (start, end)
 }
 
+#[derive(Debug, Clone)]
 enum Node {
     Branch([Vector2; 2], [Box<Node>; 2]),
     Fruit([Vector2; 2], u32, HashSet<i8>),
@@ -327,6 +328,44 @@ impl Node {
         }
         false
     }
+
+    fn insert(
+        &mut self,
+        new: &(&collider::Collider, Vector2, [Vector2; 2], u32, HashSet<i8>),
+    ) -> Option<(f32, &mut Self)> {
+        let other_bb = new.2;
+        let mut result: Vec<(f32, &mut Self)> = Vec::new();
+        return match self {
+            Node::Branch(bb, children) => {
+                if collider::is_aabb_colliding(bb, &other_bb) {
+                    children
+                        .iter_mut()
+                        .map(|child| child.insert(&new))
+                        .max_by(|x, y| {
+                            if let Some((n1, _)) = x {
+                                if let Some((n2, _)) = y {
+                                    n1.partial_cmp(n2).unwrap()
+                                } else {
+                                    std::cmp::Ordering::Greater
+                                }
+                            } else {
+                                std::cmp::Ordering::Less
+                            }
+                        })
+                        .unwrap()
+                } else {
+                    None
+                }
+            }
+            Node::Fruit(bb, _, _) => {
+                if collider::is_aabb_colliding(bb, &other_bb) {
+                    Some(((bb[1].x - other_bb[0].x) * (bb[1].y - other_bb[0].y), self))
+                } else {
+                    None
+                }
+            }
+        };
+    }
 }
 
 /// This handles broad phase optimization of collisions.
@@ -358,6 +397,25 @@ impl BVHTree {
 
     pub fn update(&mut self, old: ([Vector2; 2], u32), new: ([Vector2; 2], u32)) {
         self.root_node.update(old, new);
+    }
+
+    pub fn insert(&mut self, new: &(&collider::Collider, Vector2, [Vector2; 2], u32, HashSet<i8>)) {
+        if let Some((_, n)) = self.root_node.insert(new) {
+            if let Node::Fruit(bb, id, layers) = n {
+                let new_fruit_bb = new.0.get_bounding_box(&new.1);
+                let new_branch_bb = collider::get_aabb_union(&new_fruit_bb, bb);
+                mem::replace(
+                    n,
+                    Node::Branch(
+                        new_branch_bb,
+                        [
+                            Box::new(Node::Fruit(new_fruit_bb, new.3, new.4.clone())),
+                            Box::new(n.clone()),
+                        ],
+                    ),
+                );
+            }
+        }
     }
 
     // pub fn query_rect_batched<'a>(

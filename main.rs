@@ -187,8 +187,8 @@ impl<'a> System<'a> for CollideEnities {
 }
 
 /// update loop
-// 1323 particles 50fps
-// 5193 particles 50fps
+// 1700 particles 50fps
+// 7200 particles 50fps
 fn main() {
     let (mut rl, thread) = raylib::init()
         .size(WINDOW_SIZE[0], WINDOW_SIZE[1])
@@ -218,8 +218,10 @@ fn main() {
     let mut entity_count = 0;
 
     while !rl.window_should_close() {
+        superluminal_perf::begin_event("other");
         dispatcher.dispatch(&mut world);
         world.maintain();
+        superluminal_perf::end_event();
 
         let mouse_pos = rl.get_mouse_position();
 
@@ -252,7 +254,8 @@ fn main() {
                 rand_vec.scale(INITIAL_VELOCITY);
                 particle_physics.velocity = rand_vec;
                 entity_count += 1;
-                world
+                let collider = collider::Collider::CircleCollider { radius };
+                let e = world
                     .create_entity()
                     .with(utils::Position(position))
                     .with(particle_physics)
@@ -262,7 +265,20 @@ fn main() {
                         color: Color::new(0, 0, 0, 255),
                     })
                     .build();
-                time_since_bvh_update = 1f32 + MIN_BHV_UPDATE_TIME;
+                // time_since_bvh_update = 1f32 + MIN_BHV_UPDATE_TIME;
+                {
+                    let tuple_data = (
+                        &collider,
+                        position,
+                        collider.get_bounding_box(&position),
+                        e.id(),
+                        HS1.clone(),
+                    );
+                    let mut bvh_write: Write<Option<bvh::BVHTree>> = world.system_data();
+                    if let Some(ref mut bvh) = *bvh_write {
+                        bvh.insert(&tuple_data);
+                    }
+                }
                 timer = rl.get_time();
             }
         }
@@ -279,19 +295,21 @@ fn main() {
 
         let l_m_down = rl.is_mouse_button_down(MouseButton::MOUSE_RIGHT_BUTTON);
 
-        let mut d = rl.begin_drawing(&thread);
-        d.clear_background(Color::WHITE);
-
+        superluminal_perf::begin_event("update_bvh");
         {
-            let system_data: BvhData = world.system_data();
-            let mut bvh_data: Write<Option<bvh::BVHTree>> = world.system_data();
+            let bvh_data: BvhData = world.system_data();
+            let mut bvh_write: Write<Option<bvh::BVHTree>> = world.system_data();
             if time_since_bvh_update > MIN_BHV_UPDATE_TIME {
-                *bvh_data = Some(create_bvh(system_data));
+                *bvh_write = Some(create_bvh(bvh_data));
                 // println!("{:?}", time_since_bvh_update);
                 time_since_bvh_update = 0f32;
             }
         }
+        superluminal_perf::end_event();
 
+        superluminal_perf::begin_event("rendering");
+        let mut d = rl.begin_drawing(&thread);
+        d.clear_background(Color::WHITE);
         {
             let system_data: RenderingData = world.system_data();
             for data in (
@@ -333,6 +351,7 @@ fn main() {
                 Color::BLACK
             },
         );
+        superluminal_perf::end_event();
     }
 }
 
