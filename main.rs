@@ -3,7 +3,6 @@ extern crate lazy_static;
 use rand::Rng;
 use raylib::prelude::*;
 use rayon::prelude::*;
-use rayon::slice::ParallelSlice;
 use specs::DispatcherBuilder;
 use specs::{
     Builder, Entities, Join, ParJoin, Read, ReadStorage, System, World, WorldExt, Write,
@@ -28,7 +27,7 @@ const SCREEN_BOUNDS: [f32; 4] = [0f32, 0f32, WINDOW_SIZE[0] as f32, WINDOW_SIZE[
 const INITIAL_VELOCITY: f32 = 400f32;
 // const GRAVITY: f32 = 1f32;
 const GRAVITY: f32 = 0f32;
-// const MIN_BHV_UPDATE_TIME: f32 = 1f32;
+// const MIN_BHV_UPDATE_TIME: f32 = 100f32;
 const MIN_BHV_UPDATE_TIME: f32 = 0.1f32;
 lazy_static! {
     static ref HS1: HashSet<i8> = vec![0].into_iter().collect();
@@ -72,7 +71,7 @@ impl<'a> System<'a> for UpdatePhysics {
         // make this parrelel
         if let Some(ref mut bvh) = *bvh_tree {
             for (pos, phys, col_m, ent) in (&mut pos, &mut phys, (&col).maybe(), &ents).join() {
-                let old_pos = pos.0.clone();
+                let old_pos = pos.0;
                 phys.update(&mut pos.0, delta.0);
                 if let Some(col) = col_m {
                     bvh.update(
@@ -125,12 +124,11 @@ impl<'a> System<'a> for CollideEnities {
         )> = (&mut data.1, &data.2, &mut data.3).join().collect();
 
         // costly
-        let old_positions: Vec<Vector2> =
-            (&entity_data).into_iter().map(|t| t.0 .0.clone()).collect();
+        let old_positions: Vec<Vector2> = (&entity_data).iter().map(|t| t.0 .0).collect();
         let old_physics: Vec<physics::Physics> =
-            (&entity_data).into_iter().map(|t| t.2.clone()).collect();
+            (&entity_data).iter().map(|t| t.2.clone()).collect();
         let old_collidors: Vec<collider::Collider> =
-            (&entity_data).into_iter().map(|t| t.1.clone()).collect();
+            (&entity_data).iter().map(|t| t.1.clone()).collect();
 
         if let Some(ref bvh) = *bvh_tree {
             // let mut d = Vec::new();
@@ -165,7 +163,7 @@ impl<'a> System<'a> for CollideEnities {
             entity_data.par_iter_mut().enumerate().for_each(|(i, p)| {
                 let hs = &*HS1;
                 let old_pos = &old_positions[i];
-                let collisions = bvh.query_rect(p.1.get_bounding_box(&old_pos), Some(hs));
+                let collisions = bvh.query_rect(p.1.get_bounding_box(old_pos), Some(hs));
 
                 for p2_index in &collisions {
                     // if p2_index >= &(i as u32) {
@@ -173,11 +171,11 @@ impl<'a> System<'a> for CollideEnities {
                     let p2_pos = &old_positions[(*p2_index) as usize];
                     let p2_phys = &old_physics[(*p2_index) as usize];
                     let p2_col = &old_collidors[(*p2_index) as usize];
-                    let overlap_vec = p.1.get_collision(&old_pos, &p2_pos, p2_col);
+                    let overlap_vec = p.1.get_collision(old_pos, p2_pos, p2_col);
                     if let Some(unwraped) = overlap_vec {
                         // println!("{:#?}, {:#?}, {:#?}", p.0 .0, p2_pos, unwraped);
                         // make sure collisions are not handled twice, but we calculate it twice
-                        p.2.resolve_collision_single(&mut p.0 .0, &p2_pos, &p2_phys, unwraped);
+                        p.2.resolve_collision_single(&mut p.0 .0, p2_pos, p2_phys, unwraped);
                     }
                     // }
                 }
@@ -219,7 +217,7 @@ fn main() {
 
     while !rl.window_should_close() {
         superluminal_perf::begin_event("other");
-        dispatcher.dispatch(&mut world);
+        dispatcher.dispatch(&world);
         world.maintain();
         superluminal_perf::end_event();
 
@@ -277,6 +275,8 @@ fn main() {
                     let mut bvh_write: Write<Option<bvh::BVHTree>> = world.system_data();
                     if let Some(ref mut bvh) = *bvh_write {
                         bvh.insert(&tuple_data);
+                    } else {
+                        time_since_bvh_update = 1f32 + MIN_BHV_UPDATE_TIME;
                     }
                 }
                 timer = rl.get_time();
@@ -320,7 +320,7 @@ fn main() {
             )
                 .join()
             {
-                let (r, pos, phys, col) = data;
+                let (r, pos, _, col) = data;
                 r.render(&mut d, pos);
                 if l_m_down {
                     if let Some(c) = col {
