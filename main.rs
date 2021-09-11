@@ -8,6 +8,8 @@ use specs::{
     Builder, Entities, Join, ParJoin, Read, ReadStorage, System, World, WorldExt, Write,
     WriteStorage,
 };
+// use std::cmp::max;
+// use std::cmp::min;
 use std::collections::HashSet;
 
 mod bvh;
@@ -18,24 +20,23 @@ mod utils;
 // mod tests;
 
 const RADIUS: f32 = 10.0f32;
-const COLLISION_FRICTION: f32 = 0.998f32;
-// const COLLISION_FRICTION: f32 = 1f32;
-const FRICTION: f32 = 0.998f32;
-// const FRICTION: f32 = 1f32;
-const WINDOW_SIZE: [i32; 2] = [1400, 1000];
-const SCREEN_BOUNDS: [f32; 4] = [0f32, 0f32, WINDOW_SIZE[0] as f32, WINDOW_SIZE[1] as f32];
+// const COLLISION_FRICTION: f32 = 0.998f32;
+const COLLISION_FRICTION: f32 = 1f32;
+// const FRICTION: f32 = 0.998f32;
+const FRICTION: f32 = 1f32;
 const INITIAL_VELOCITY: f32 = 400f32;
 // const GRAVITY: f32 = 1f32;
 const GRAVITY: f32 = 0f32;
 // const MIN_BHV_UPDATE_TIME: f32 = 100f32;
-const MIN_BHV_UPDATE_TIME: f32 = 0.1f32;
+const MIN_BHV_UPDATE_TIME: f32 = 0.15f32;
+const WINDOW_SIZE: [i32; 2] = [1400, 1000];
 lazy_static! {
     static ref HS1: HashSet<i8> = vec![0].into_iter().collect();
     static ref HS2: HashSet<i8> = vec![1].into_iter().collect();
 }
 
 type RenderingData<'a> = (
-    ReadStorage<'a, renderer::Renderer>,
+    WriteStorage<'a, renderer::Renderer>,
     ReadStorage<'a, utils::Position>,
     ReadStorage<'a, physics::Physics>,
     WriteStorage<'a, collider::Collider>,
@@ -88,16 +89,18 @@ struct CollideBounds;
 
 impl<'a> System<'a> for CollideBounds {
     type SystemData = (
+        Read<'a, [i32; 2]>,
         WriteStorage<'a, utils::Position>,
         ReadStorage<'a, collider::Collider>,
         WriteStorage<'a, physics::Physics>,
     );
 
-    fn run(&mut self, (mut pos, col, mut phys): Self::SystemData) {
+    fn run(&mut self, (size, mut pos, col, mut phys): Self::SystemData) {
         (&mut pos, &col, &mut phys)
             .par_join()
             .for_each(|(pos, col, phys)| {
-                let overlap_vec = col.get_collision_bounds(&pos.0, SCREEN_BOUNDS);
+                let overlap_vec =
+                    col.get_collision_bounds(&pos.0, [0.0, 0.0, size[0] as f32, size[1] as f32]);
                 if let Some(unwraped) = overlap_vec {
                     phys.collide_bound(&mut pos.0, unwraped);
                 }
@@ -189,6 +192,9 @@ impl<'a> System<'a> for CollideEnities {
 // 7200 particles 50fps
 fn main() {
     let (mut rl, thread) = raylib::init()
+        .resizable()
+        .transparent()
+        // .undecorated()
         .size(WINDOW_SIZE[0], WINDOW_SIZE[1])
         .title("Hello, World")
         .build();
@@ -202,6 +208,7 @@ fn main() {
     world.register::<collider::Collider>();
     world.register::<renderer::Renderer>();
     world.insert(Delta(0.00));
+    world.insert([rl.get_screen_width(), rl.get_screen_height()]);
     world.insert(bvh_tree);
     let mut dispatcher = DispatcherBuilder::new()
         .with(UpdatePhysics, "update_physics", &[])
@@ -214,6 +221,8 @@ fn main() {
     let mut rng = rand::thread_rng();
 
     let mut entity_count = 0;
+
+    let mut clear_once = true;
 
     while !rl.window_should_close() {
         superluminal_perf::begin_event("other");
@@ -229,6 +238,11 @@ fn main() {
             time_since_bvh_update += delta.0;
         }
 
+        {
+            let mut size = world.write_resource::<[i32; 2]>();
+            *size = [rl.get_screen_width(), rl.get_screen_height()]
+        }
+
         if rl.is_key_pressed(KeyboardKey::KEY_R) {
             entity_count = 0;
             world.delete_all();
@@ -241,7 +255,12 @@ fn main() {
         if rl.get_fps() > 50 {
             // if rl.is_key_down(KeyboardKey::KEY_SPACE) {
             if rl.get_time() - timer > 0.01 {
-                let position = Vector2::new(rng.gen::<f32>() * WINDOW_SIZE[0] as f32, 0f32);
+                let x_size;
+                {
+                    let size = world.read_resource::<[i32; 2]>();
+                    x_size = size[0];
+                }
+                let position = Vector2::new(rng.gen::<f32>() * x_size as f32, 0f32);
                 let radius = 5f32 + RADIUS * ((rng.gen::<u8>() % 32) as f32) / 128f32;
                 let mut particle_physics = physics::Physics::new(radius);
                 let mut rand_vec = Vector2::new(0f32, 0f32);
@@ -258,9 +277,13 @@ fn main() {
                     .with(utils::Position(position))
                     .with(particle_physics)
                     .with(collider::Collider::CircleCollider { radius })
+                    // .with(renderer::Renderer::RectangeRenderer {
+                    //     size: Vector2::new(radius * 2f32, radius * 2f32),
+                    //     color: Color::new(255, 255, 255, 255),
+                    // })
                     .with(renderer::Renderer::CircleRenderer {
                         radius,
-                        color: Color::new(0, 0, 0, 255),
+                        color: Color::new(255, 255, 255, 255),
                     })
                     .build();
                 // time_since_bvh_update = 1f32 + MIN_BHV_UPDATE_TIME;
@@ -288,7 +311,13 @@ fn main() {
                 world.system_data();
             for (phys, pos) in (&mut system_data.0, &system_data.1).join() {
                 if rl.is_mouse_button_down(MouseButton::MOUSE_LEFT_BUTTON) {
-                    phys.velocity += (mouse_pos - pos.0).normalized() * 10f32;
+                    let mut vec_2d = (mouse_pos - pos.0).normalized() * 10000f32
+                        / ((mouse_pos.x - pos.0.x) * (mouse_pos.x - pos.0.x)
+                            + (mouse_pos.y - pos.0.y) * (mouse_pos.y - pos.0.y));
+                    let temp = vec_2d.x;
+                    vec_2d.x = -vec_2d.y;
+                    vec_2d.y = temp;
+                    phys.velocity += vec_2d;
                 }
             }
         }
@@ -308,12 +337,29 @@ fn main() {
         superluminal_perf::end_event();
 
         superluminal_perf::begin_event("rendering");
+
         let mut d = rl.begin_drawing(&thread);
-        d.clear_background(Color::WHITE);
+        if l_m_down || clear_once {
+            d.clear_background(Color::WHITE);
+            clear_once = false;
+        }
+
         {
-            let system_data: RenderingData = world.system_data();
+            let size = world.read_resource::<[i32; 2]>();
+            d.draw_rectangle(
+                0,
+                0,
+                size[0] as i32,
+                size[1] as i32,
+                Color::new(0, 0, 0, (5f32 * (entity_count as f32 / 1000f32)) as u8),
+            );
+        }
+
+        d.draw_rectangle(0, 0, 100, 50, Color::new(0, 0, 0, 255));
+        {
+            let mut system_data: RenderingData = world.system_data();
             for data in (
-                &system_data.0,
+                &mut system_data.0,
                 &system_data.1,
                 (&system_data.2).maybe(),
                 (&system_data.3).maybe(),
@@ -321,6 +367,32 @@ fn main() {
                 .join()
             {
                 let (r, pos, _, col) = data;
+                // match r {
+                //     renderer::Renderer::CircleRenderer { radius: _, color } => {
+                //         color.r = color
+                //             .r
+                //             .wrapping_add((1 - (rng.gen::<bool>() as i8 * 2)) as u8);
+                //         color.g = color
+                //             .g
+                //             .wrapping_add((1 - (rng.gen::<bool>() as i8 * 2)) as u8);
+                //         color.b = color
+                //             .b
+                //             .wrapping_add((1 - (rng.gen::<bool>() as i8 * 2)) as u8);
+                //         color.a = 150;
+                //     }
+                //     renderer::Renderer::RectangeRenderer { size: _, color } => {
+                //         color.r = color
+                //             .r
+                //             .wrapping_add((1 - (rng.gen::<bool>() as i8 * 2)) as u8);
+                //         color.g = color
+                //             .g
+                //             .wrapping_add((1 - (rng.gen::<bool>() as i8 * 2)) as u8);
+                //         color.b = color
+                //             .b
+                //             .wrapping_add((1 - (rng.gen::<bool>() as i8 * 2)) as u8);
+                //         color.a = 150;
+                //     }
+                // }
                 r.render(&mut d, pos);
                 if l_m_down {
                     if let Some(c) = col {
@@ -348,7 +420,7 @@ fn main() {
             if time_since_bvh_update < f32::EPSILON {
                 Color::RED
             } else {
-                Color::BLACK
+                Color::WHITE
             },
         );
         superluminal_perf::end_event();

@@ -385,7 +385,7 @@ impl BVHTree {
 
     pub fn insert(&mut self, new: &(&collider::Collider, Vector2, [Vector2; 2], u32, HashSet<i8>)) {
         let result = self.root_node.insert(new);
-        println!("{:#?}", result);
+        // println!("{:#?}", result);
     }
 
     // pub fn query_rect_batched<'a>(
