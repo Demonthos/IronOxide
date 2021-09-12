@@ -66,9 +66,10 @@ impl Collider {
     pub fn get_bounding_box(&self, pos: &Vector2) -> [Vector2; 2] {
         let pos_clone = *pos;
         match self {
-            Collider::CircleCollider { radius } => {
-                [pos_clone, pos_clone + Vector2::one() * (*radius) * 2f32]
-            }
+            Collider::CircleCollider { radius } => [
+                pos_clone - Vector2::one() * (*radius),
+                pos_clone + Vector2::one() * (*radius),
+            ],
             Collider::RectangeCollider { size } => [pos_clone, pos_clone + *size],
         }
     }

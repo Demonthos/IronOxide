@@ -19,7 +19,7 @@ mod renderer;
 mod utils;
 // mod tests;
 
-const RADIUS: f32 = 10.0f32;
+const RADIUS: f32 = 5.0f32;
 // const COLLISION_FRICTION: f32 = 0.998f32;
 const COLLISION_FRICTION: f32 = 1f32;
 // const FRICTION: f32 = 0.998f32;
@@ -187,6 +187,110 @@ impl<'a> System<'a> for CollideEnities {
     }
 }
 
+struct UpdateVelocity;
+
+impl<'a> System<'a> for UpdateVelocity {
+    type SystemData = (
+        Read<'a, Option<bvh::BVHTree>>,
+        WriteStorage<'a, utils::Position>,
+        ReadStorage<'a, collider::Collider>,
+        WriteStorage<'a, physics::Physics>,
+        Read<'a, [i32; 2]>,
+    );
+
+    fn run(&mut self, mut data: Self::SystemData) {
+        let size = data.4;
+        let bvh_tree = data.0;
+        let mut entity_data: Vec<(
+            &mut utils::Position,
+            &collider::Collider,
+            &mut physics::Physics,
+        )> = (&mut data.1, &data.2, &mut data.3).join().collect();
+
+        // costly
+        let old_positions: Vec<Vector2> = (&entity_data).iter().map(|t| t.0 .0).collect();
+        let old_physics: Vec<physics::Physics> =
+            (&entity_data).iter().map(|t| t.2.clone()).collect();
+
+        if let Some(ref bvh) = *bvh_tree {
+            entity_data.par_iter_mut().enumerate().for_each(|(i, p)| {
+                let hs = &*HS1;
+                let old_pos = &old_positions[i];
+                let bb = p.1.get_bounding_box(old_pos);
+                let collisions: Vec<_> = bvh
+                    .query_rect(bb, Some(hs))
+                    .into_iter()
+                    .filter(|id| *id != i as u32)
+                    .collect();
+
+                if collisions.len() > 0 {
+                    let sum_pos_o = collisions
+                        .iter()
+                        .map(|i| old_positions[(*i) as usize])
+                        .reduce(|i1, i2| i1 + i2);
+
+                    let close_vec: Vec<_> = collisions
+                        .iter()
+                        .map(|i| old_positions[(*i) as usize])
+                        .filter_map(|position| {
+                            let d = position.distance_to(*old_pos);
+                            if d < (bb[1].x - bb[0].x) / 4.0 {
+                                Some((*old_pos - position) / d)
+                            } else {
+                                None
+                            }
+                        })
+                        .collect();
+
+                    let sum_close_o = close_vec.iter().copied().reduce(|i1, i2| (i1 + i2));
+
+                    let sum_vel_o = collisions
+                        .iter()
+                        .map(|i| old_physics[(*i) as usize].velocity)
+                        .reduce(|i1, i2| i1 + i2);
+
+                    if let Some(sum_vel) = sum_vel_o {
+                        p.2.velocity += sum_vel.normalized() * 4.0;
+                    }
+
+                    if let Some(sum_pos) = sum_pos_o {
+                        let dif_pos = *old_pos - (sum_pos / collisions.len() as f32);
+
+                        if dif_pos.length_sqr() > 0.0 {
+                            p.2.velocity -= dif_pos.normalized() * 4.0;
+                        }
+                    }
+
+                    if let Some(sum_close) = sum_close_o {
+                        if sum_close.length_sqr() > 0.0 {
+                            p.2.velocity += sum_close.normalized() * 4.0;
+                        }
+                    }
+                }
+
+                if p.0 .0.x < 0.0 {
+                    p.0 .0.x = size[0] as f32;
+                }
+
+                if p.0 .0.x > size[0] as f32 {
+                    p.0 .0.x = 0.0;
+                }
+
+                if p.0 .0.y < 0.0 {
+                    p.0 .0.y = size[1] as f32;
+                }
+
+                if p.0 .0.y > size[1] as f32 {
+                    p.0 .0.y = 0.0;
+                }
+
+                p.2.velocity.normalize();
+                p.2.velocity *= 100f32;
+            });
+        }
+    }
+}
+
 /// update loop
 // 1700 particles 50fps
 // 7200 particles 50fps
@@ -212,8 +316,9 @@ fn main() {
     world.insert(bvh_tree);
     let mut dispatcher = DispatcherBuilder::new()
         .with(UpdatePhysics, "update_physics", &[])
-        .with(CollideBounds, "collide_bounds", &["update_physics"])
-        .with(CollideEnities, "collide_entities", &["update_physics"])
+        .with(UpdateVelocity, "update_velocity", &[])
+        // .with(CollideBounds, "collide_bounds", &["update_physics"])
+        // .with(CollideEnities, "collide_entities", &["update_physics"])
         // .with(HelloWorld, "hello_updated", &["update_pos"])
         .build();
 
@@ -252,31 +357,39 @@ fn main() {
             timer = rl.get_time();
         }
 
-        if rl.get_fps() > 50 {
+        if rl.get_fps() > 100 {
             // if rl.is_key_down(KeyboardKey::KEY_SPACE) {
             if rl.get_time() - timer > 0.01 {
                 let x_size;
+                let y_size;
                 {
                     let size = world.read_resource::<[i32; 2]>();
                     x_size = size[0];
+                    y_size = size[1];
                 }
-                let position = Vector2::new(rng.gen::<f32>() * x_size as f32, 0f32);
-                let radius = 5f32 + RADIUS * ((rng.gen::<u8>() % 32) as f32) / 128f32;
+                let radius = RADIUS;
+                let position = Vector2::new(
+                    rng.gen::<f32>() * x_size as f32,
+                    rng.gen::<f32>() * y_size as f32,
+                );
                 let mut particle_physics = physics::Physics::new(radius);
                 let mut rand_vec = Vector2::new(0f32, 0f32);
                 while rand_vec.length_sqr() == 0f32 {
-                    rand_vec = Vector2::new(rng.gen::<f32>(), rng.gen::<f32>());
+                    rand_vec =
+                        Vector2::new(1.0 - 2.0 * rng.gen::<f32>(), 1.0 - 2.0 * rng.gen::<f32>());
                 }
                 rand_vec.normalize();
                 rand_vec.scale(INITIAL_VELOCITY);
                 particle_physics.velocity = rand_vec;
                 entity_count += 1;
-                let collider = collider::Collider::CircleCollider { radius };
+                let collider = collider::Collider::CircleCollider {
+                    radius: radius * 10.0,
+                };
                 let e = world
                     .create_entity()
                     .with(utils::Position(position))
                     .with(particle_physics)
-                    .with(collider::Collider::CircleCollider { radius })
+                    .with(collider.clone())
                     // .with(renderer::Renderer::RectangeRenderer {
                     //     size: Vector2::new(radius * 2f32, radius * 2f32),
                     //     color: Color::new(255, 255, 255, 255),
@@ -311,13 +424,14 @@ fn main() {
                 world.system_data();
             for (phys, pos) in (&mut system_data.0, &system_data.1).join() {
                 if rl.is_mouse_button_down(MouseButton::MOUSE_LEFT_BUTTON) {
-                    let mut vec_2d = (mouse_pos - pos.0).normalized() * 10000f32
-                        / ((mouse_pos.x - pos.0.x) * (mouse_pos.x - pos.0.x)
-                            + (mouse_pos.y - pos.0.y) * (mouse_pos.y - pos.0.y));
-                    let temp = vec_2d.x;
-                    vec_2d.x = -vec_2d.y;
-                    vec_2d.y = temp;
-                    phys.velocity += vec_2d;
+                    //     let mut vec_2d = (mouse_pos - pos.0).normalized() * 10000f32
+                    //         / ((mouse_pos.x - pos.0.x) * (mouse_pos.x - pos.0.x)
+                    //             + (mouse_pos.y - pos.0.y) * (mouse_pos.y - pos.0.y));
+                    //     let temp = vec_2d.x;
+                    //     vec_2d.x = -vec_2d.y;
+                    //     vec_2d.y = temp;
+                    //     phys.velocity += vec_2d;
+                    phys.velocity += (mouse_pos - pos.0).normalized() * 20.0;
                 }
             }
         }
@@ -366,33 +480,27 @@ fn main() {
             )
                 .join()
             {
-                let (r, pos, _, col) = data;
-                // match r {
-                //     renderer::Renderer::CircleRenderer { radius: _, color } => {
-                //         color.r = color
-                //             .r
-                //             .wrapping_add((1 - (rng.gen::<bool>() as i8 * 2)) as u8);
-                //         color.g = color
-                //             .g
-                //             .wrapping_add((1 - (rng.gen::<bool>() as i8 * 2)) as u8);
-                //         color.b = color
-                //             .b
-                //             .wrapping_add((1 - (rng.gen::<bool>() as i8 * 2)) as u8);
-                //         color.a = 150;
-                //     }
-                //     renderer::Renderer::RectangeRenderer { size: _, color } => {
-                //         color.r = color
-                //             .r
-                //             .wrapping_add((1 - (rng.gen::<bool>() as i8 * 2)) as u8);
-                //         color.g = color
-                //             .g
-                //             .wrapping_add((1 - (rng.gen::<bool>() as i8 * 2)) as u8);
-                //         color.b = color
-                //             .b
-                //             .wrapping_add((1 - (rng.gen::<bool>() as i8 * 2)) as u8);
-                //         color.a = 150;
-                //     }
-                // }
+                let (r, pos, phys, col) = data;
+                if let Some(p) = phys {
+                    match r {
+                        renderer::Renderer::CircleRenderer { radius: _, color } => {
+                            *color = Color::color_from_hsv(
+                                p.velocity.angle_to(Vector2::one()) * 2f32
+                                    / std::f32::consts::PI.to_radians(),
+                                1.0,
+                                1.0,
+                            );
+                        }
+                        renderer::Renderer::RectangeRenderer { size: _, color } => {
+                            *color = Color::color_from_hsv(
+                                p.velocity.angle_to(Vector2::one()) * 2f32
+                                    / std::f32::consts::PI.to_radians(),
+                                1.0,
+                                1.0,
+                            );
+                        }
+                    }
+                }
                 r.render(&mut d, pos);
                 if l_m_down {
                     if let Some(c) = col {
