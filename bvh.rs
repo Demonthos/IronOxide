@@ -59,12 +59,14 @@ fn split_at_mid<'a>(
 }
 
 #[derive(Debug, Clone)]
-enum Node {
+pub enum Node {
     Branch([Vector2; 2], [Box<Node>; 2]),
     Fruit([Vector2; 2], u32, HashSet<i8>),
 }
 
 impl Node {
+    // 1/2 of bounding box data is redundant!
+    // change to true binary tree
     fn new(mut data: Vec<(&collider::Collider, Vector2, [Vector2; 2], u32, HashSet<i8>)>) -> Node {
         if data.len() <= 1 {
             let owned = data.remove(0);
@@ -100,8 +102,8 @@ impl Node {
         sum_vec
     }
 
-    fn query_point(&self, p: Vector2, layers_option: Option<&HashSet<i8>>) -> Vec<u32> {
-        let mut result = Vec::new();
+    fn query_point(&self, p: Vector2, layers_option: Option<&HashSet<i8>>) -> Option<Vec<u32>> {
+        let mut result: Option<Vec<u32>> = None;
         match self {
             Node::Branch(bb, children) => {
                 // if let Some(layers) = layers_option {
@@ -118,7 +120,16 @@ impl Node {
                 // }
                 if bb[0].x < p.x && bb[1].x > p.x && bb[0].y < p.y && bb[1].y > p.y {
                     for child in children {
-                        result.append(&mut child.query_point(p, layers_option));
+                        let child_results = &mut child.query_point(p, layers_option);
+                        if let Some(child_collisions) = child_results {
+                            if let Some(ref mut result_vec) = result {
+                                result_vec.append(child_collisions);
+                            } else {
+                                let mut new_result_vec = Vec::with_capacity(child_collisions.len());
+                                new_result_vec.append(child_collisions);
+                                result = Some(new_result_vec);
+                            }
+                        }
                     }
                 }
             }
@@ -140,7 +151,11 @@ impl Node {
                     && bb[0].y < p.y
                     && bb[1].y > p.y
                 {
-                    result.push(*other_data);
+                    if let Some(ref mut result_vec) = result {
+                        result_vec.push(*other_data);
+                    } else {
+                        result = Some(vec![*other_data]);
+                    }
                 }
             }
         }
@@ -152,9 +167,8 @@ impl Node {
         r: [Vector2; 2],
         layers_option: Option<&HashSet<i8>>,
         depth: i32,
-    ) -> Vec<u32> {
-        let mut result = Vec::new();
-        match self {
+    ) -> Option<Vec<u32>> {
+        return match self {
             Node::Branch(bb, children) => {
                 // if let Some(layers) = layers_option {
                 //     let mut contains_layer = false;
@@ -165,13 +179,23 @@ impl Node {
                 //         }
                 //     }
                 //     if !contains_layer {
-                //         return result;
+                //         return None;
                 //     }
                 // }
                 if collider::is_aabb_colliding(bb, &r) {
+                    let mut result: Option<Vec<u32>> = None;
                     // if depth > 1 {
                     for child in children {
-                        result.append(&mut child.query_rect(r, layers_option, depth));
+                        // let child_results = ;
+                        if let Some(mut child_collisions) =
+                            child.query_rect(r, layers_option, depth + 1)
+                        {
+                            if let Some(ref mut result_vec) = result {
+                                result_vec.append(&mut child_collisions);
+                            } else {
+                                result = Some(child_collisions);
+                            }
+                        }
                     }
                     // } else {
                     //     result.par_extend(
@@ -181,6 +205,9 @@ impl Node {
                     //             .flatten(),
                     //     )
                     // }
+                    result
+                } else {
+                    None
                 }
             }
             Node::Fruit(bb, other_data, l) => {
@@ -190,11 +217,12 @@ impl Node {
                     true
                 };
                 if contains_layer && collider::is_aabb_colliding(bb, &r) {
-                    result.push(*other_data);
+                    Some(vec![*other_data])
+                } else {
+                    None
                 }
             }
-        }
-        result
+        };
     }
 
     // tries to make collision checking faster by recursively checking collision in parallel. Fails
@@ -372,11 +400,15 @@ impl BVHTree {
     }
 
     pub fn query_point(&self, p: Vector2, layers_option: Option<&HashSet<i8>>) -> Vec<u32> {
-        self.root_node.query_point(p, layers_option)
+        self.root_node
+            .query_point(p, layers_option)
+            .unwrap_or_default()
     }
 
     pub fn query_rect(&self, r: [Vector2; 2], layers_option: Option<&HashSet<i8>>) -> Vec<u32> {
-        self.root_node.query_rect(r, layers_option, 0)
+        self.root_node
+            .query_rect(r, layers_option, 0)
+            .unwrap_or_default()
     }
 
     pub fn update(&mut self, old: ([Vector2; 2], u32), new: ([Vector2; 2], u32)) {

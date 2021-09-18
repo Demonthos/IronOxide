@@ -98,6 +98,7 @@ impl<'a> System<'a> for CollideBounds {
     fn run(&mut self, (size, mut pos, col, mut phys): Self::SystemData) {
         (&mut pos, &col, &mut phys)
             .par_join()
+            .filter(|(_, col, _)| col.physics_collider)
             .for_each(|(pos, col, phys)| {
                 let overlap_vec =
                     col.get_collision_bounds(&pos.0, [0.0, 0.0, size[0] as f32, size[1] as f32]);
@@ -124,7 +125,10 @@ impl<'a> System<'a> for CollideEnities {
             &mut utils::Position,
             &collider::Collider,
             &mut physics::Physics,
-        )> = (&mut data.1, &data.2, &mut data.3).join().collect();
+        )> = (&mut data.1, &data.2, &mut data.3)
+            .join()
+            .filter(|(_, col, _)| col.physics_collider)
+            .collect();
 
         // costly
         let old_positions: Vec<Vector2> = (&entity_data).iter().map(|t| t.0 .0).collect();
@@ -166,7 +170,7 @@ impl<'a> System<'a> for CollideEnities {
             entity_data.par_iter_mut().enumerate().for_each(|(i, p)| {
                 let hs = &*HS1;
                 let old_pos = &old_positions[i];
-                let collisions = bvh.query_rect(p.1.get_bounding_box(old_pos), Some(hs));
+                let collisions = bvh.query_rect(p.1.get_bounding_box(old_pos), None);
 
                 for p2_index in &collisions {
                     // if p2_index >= &(i as u32) {
@@ -214,11 +218,11 @@ impl<'a> System<'a> for UpdateVelocity {
 
         if let Some(ref bvh) = *bvh_tree {
             entity_data.par_iter_mut().enumerate().for_each(|(i, p)| {
-                let hs = &*HS1;
+                let hs = None;
                 let old_pos = &old_positions[i];
                 let bb = p.1.get_bounding_box(old_pos);
                 let collisions: Vec<_> = bvh
-                    .query_rect(bb, Some(hs))
+                    .query_rect(bb, hs)
                     .into_iter()
                     .filter(|id| *id != i as u32)
                     .collect();
@@ -234,7 +238,7 @@ impl<'a> System<'a> for UpdateVelocity {
                         .map(|i| old_positions[(*i) as usize])
                         .filter_map(|position| {
                             let d = position.distance_to(*old_pos);
-                            if d < (bb[1].x - bb[0].x) / 4.0 {
+                            if d < (bb[1].x - bb[0].x) / 3.0 {
                                 Some((*old_pos - position) / d)
                             } else {
                                 None
@@ -263,7 +267,7 @@ impl<'a> System<'a> for UpdateVelocity {
 
                     if let Some(sum_close) = sum_close_o {
                         if sum_close.length_sqr() > 0.0 {
-                            p.2.velocity += sum_close.normalized() * 4.0;
+                            p.2.velocity += sum_close.normalized() * 5.0;
                         }
                     }
                 }
@@ -292,8 +296,8 @@ impl<'a> System<'a> for UpdateVelocity {
 }
 
 /// update loop
-// 1700 particles 50fps
-// 7200 particles 50fps
+// 750 particles 50fps
+// 2300 particles 50fps
 fn main() {
     let (mut rl, thread) = raylib::init()
         .resizable()
@@ -317,8 +321,8 @@ fn main() {
     let mut dispatcher = DispatcherBuilder::new()
         .with(UpdatePhysics, "update_physics", &[])
         .with(UpdateVelocity, "update_velocity", &[])
-        // .with(CollideBounds, "collide_bounds", &["update_physics"])
-        // .with(CollideEnities, "collide_entities", &["update_physics"])
+        .with(CollideBounds, "collide_bounds", &["update_physics"])
+        .with(CollideEnities, "collide_entities", &["update_physics"])
         // .with(HelloWorld, "hello_updated", &["update_pos"])
         .build();
 
@@ -382,8 +386,11 @@ fn main() {
                 rand_vec.scale(INITIAL_VELOCITY);
                 particle_physics.velocity = rand_vec;
                 entity_count += 1;
-                let collider = collider::Collider::CircleCollider {
-                    radius: radius * 10.0,
+                let collider = collider::Collider {
+                    shape: collider::Shape::CircleCollider {
+                        radius: radius * 5.0,
+                    },
+                    physics_collider: false,
                 };
                 let e = world
                     .create_entity()
@@ -459,13 +466,19 @@ fn main() {
         }
 
         {
+            let mut delta = world.read_resource::<Delta>();
             let size = world.read_resource::<[i32; 2]>();
             d.draw_rectangle(
                 0,
                 0,
                 size[0] as i32,
                 size[1] as i32,
-                Color::new(0, 0, 0, (5f32 * (entity_count as f32 / 1000f32)) as u8),
+                Color::new(
+                    0,
+                    0,
+                    0,
+                    (5f32 * delta.0 * (entity_count as f32) / 10f32) as u8,
+                ),
             );
         }
 

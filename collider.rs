@@ -4,9 +4,9 @@ use specs::{Component, VecStorage};
 /// handles narrow phase collisions, and generating aabbs.
 #[derive(Debug, Clone, Component)]
 #[storage(VecStorage)]
-pub enum Collider {
-    CircleCollider { radius: f32 },
-    RectangeCollider { size: Vector2 },
+pub struct Collider {
+    pub shape: Shape,
+    pub physics_collider: bool,
 }
 
 impl Collider {
@@ -16,9 +16,29 @@ impl Collider {
         other_pos: &Vector2,
         other: &Collider,
     ) -> Option<Vector2> {
+        self.shape.get_collision(pos, other_pos, &other.shape)
+    }
+
+    pub fn get_collision_bounds(&self, pos: &Vector2, bounds: [f32; 4]) -> Option<Vector2> {
+        self.shape.get_collision_bounds(pos, bounds)
+    }
+
+    pub fn get_bounding_box(&self, pos: &Vector2) -> [Vector2; 2] {
+        self.shape.get_bounding_box(pos)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum Shape {
+    CircleCollider { radius: f32 },
+    RectangeCollider { size: Vector2 },
+}
+
+impl Shape {
+    fn get_collision(&self, pos: &Vector2, other_pos: &Vector2, other: &Shape) -> Option<Vector2> {
         match self {
-            Collider::CircleCollider { radius } => match other {
-                Collider::CircleCollider {
+            Shape::CircleCollider { radius } => match other {
+                Shape::CircleCollider {
                     radius: other_radius,
                 } => {
                     let mut collision_vec = (*other_pos + Vector2::one() * (*other_radius))
@@ -34,19 +54,19 @@ impl Collider {
                         return Some(collision_vec * (sum_r - dist));
                     }
                 }
-                Collider::RectangeCollider { size } => {}
+                Shape::RectangeCollider { size } => {}
             },
-            Collider::RectangeCollider { size } => match other {
-                Collider::CircleCollider {
+            Shape::RectangeCollider { size } => match other {
+                Shape::CircleCollider {
                     radius: other_radius,
                 } => {}
-                Collider::RectangeCollider { size: other_size } => {}
+                Shape::RectangeCollider { size: other_size } => {}
             },
         }
         None
     }
 
-    pub fn get_collision_bounds(&self, pos: &Vector2, bounds: [f32; 4]) -> Option<Vector2> {
+    fn get_collision_bounds(&self, pos: &Vector2, bounds: [f32; 4]) -> Option<Vector2> {
         let bounding_box = self.get_bounding_box(pos);
         if bounding_box[0].x < bounds[0] {
             return Some(Vector2::new(bounds[0] - bounding_box[0].x, 0f32));
@@ -63,14 +83,14 @@ impl Collider {
         None
     }
 
-    pub fn get_bounding_box(&self, pos: &Vector2) -> [Vector2; 2] {
+    fn get_bounding_box(&self, pos: &Vector2) -> [Vector2; 2] {
         let pos_clone = *pos;
         match self {
-            Collider::CircleCollider { radius } => [
+            Shape::CircleCollider { radius } => [
                 pos_clone - Vector2::one() * (*radius),
                 pos_clone + Vector2::one() * (*radius),
             ],
-            Collider::RectangeCollider { size } => [pos_clone, pos_clone + *size],
+            Shape::RectangeCollider { size } => [pos_clone, pos_clone + *size],
         }
     }
 }
