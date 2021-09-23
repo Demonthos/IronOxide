@@ -67,6 +67,8 @@ pub enum Node {
 impl Node {
     // 1/2 of bounding box data is redundant!
     // change to true binary tree
+    // change constuction to use sah
+    // use variable floating point precition for quearies?
     fn new(mut data: Vec<(&collider::Collider, Vector2, [Vector2; 2], u32, HashSet<i8>)>) -> Node {
         if data.len() <= 1 {
             let owned = data.remove(0);
