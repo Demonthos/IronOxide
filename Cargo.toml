@@ -1,0 +1,10 @@
+# env:RUSTFLAGS="-C target-cpu=native"
+
+[workspace]
+members = [
+    "lib",
+    "examples\\boid"
+]
+
+[profile.release]
+debug = true
