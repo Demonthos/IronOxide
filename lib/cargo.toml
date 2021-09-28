@@ -1,0 +1,19 @@
+[package]
+name = "iron_oxide"
+version = "0.1.0"
+edition = "2018"
+
+[dependencies]
+raylib = "3.0"
+specs = { version = "0.17.0", features = ["specs-derive"] }
+rayon = "1.5.1"
+lazy_static = "1.4.0"
+rand = "0.8.0"
+
+
+# building is optimized, but slow
+[profile.release]
+lto = true
+codegen-units = 1
+opt-level = 3
+debug = true
