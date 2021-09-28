@@ -1,0 +1,7 @@
+[package]
+name = "boid"
+version = "0.1.0"
+authors = ["Evan Almloff"]
+
+[dependencies]
+iron_oxide = { path = "../../lib" }
