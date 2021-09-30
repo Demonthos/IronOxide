@@ -1,7 +1,7 @@
 use raylib::math::Vector2;
 use specs::{Component, VecStorage};
 
-/// handles narrow phase collisions, and generating aabbs.
+/// Handles narrow phase collisions, and generating aabbs.
 // implement bottom up collision caching if physics_collider is true
 #[derive(Debug, Clone, Component)]
 #[storage(VecStorage)]
@@ -24,7 +24,7 @@ impl Collider {
         self.shape.get_collision_bounds(pos, bounds)
     }
 
-    pub fn get_bounding_box(&self, pos: &Vector2) -> [Vector2; 2] {
+    pub fn get_bounding_box(&self, pos: &Vector2) -> AABB {
         self.shape.get_bounding_box(pos)
     }
 }
@@ -69,57 +69,101 @@ impl Shape {
 
     fn get_collision_bounds(&self, pos: &Vector2, bounds: [f32; 4]) -> Option<Vector2> {
         let bounding_box = self.get_bounding_box(pos);
-        if bounding_box[0].x < bounds[0] {
-            return Some(Vector2::new(bounds[0] - bounding_box[0].x, 0f32));
+        if bounding_box.lx < bounds[0] {
+            return Some(Vector2::new(bounds[0] - bounding_box.lx, 0f32));
         }
-        if bounding_box[0].y < bounds[1] {
-            return Some(Vector2::new(0f32, bounds[1] - bounding_box[0].y));
+        if bounding_box.ly < bounds[1] {
+            return Some(Vector2::new(0f32, bounds[1] - bounding_box.ly));
         }
-        if bounding_box[1].x > bounds[2] {
-            return Some(Vector2::new(bounds[2] - bounding_box[1].x, 0f32));
+        if bounding_box.rx > bounds[2] {
+            return Some(Vector2::new(bounds[2] - bounding_box.rx, 0f32));
         }
-        if bounding_box[1].y > bounds[3] {
-            return Some(Vector2::new(0f32, bounds[3] - bounding_box[1].y));
+        if bounding_box.ry > bounds[3] {
+            return Some(Vector2::new(0f32, bounds[3] - bounding_box.ry));
         }
         None
     }
 
-    fn get_bounding_box(&self, pos: &Vector2) -> [Vector2; 2] {
-        let pos_clone = *pos;
+    fn get_bounding_box(&self, pos: &Vector2) -> AABB {
         match self {
-            Shape::CircleCollider { radius } => [
-                pos_clone - Vector2::one() * (*radius),
-                pos_clone + Vector2::one() * (*radius),
-            ],
-            Shape::RectangeCollider { size } => [pos_clone, pos_clone + *size],
+            Shape::CircleCollider { radius } => AABB {
+                lx: pos.x - radius,
+                rx: pos.x + radius,
+                ly: pos.y - radius,
+                ry: pos.y + radius,
+            },
+            Shape::RectangeCollider { size } => AABB {
+                lx: pos.x,
+                rx: pos.x + size.x,
+                ly: pos.y,
+                ry: pos.y + size.x,
+            },
         }
     }
 }
 
-pub fn get_aabb_union(first: &[Vector2; 2], second: &[Vector2; 2]) -> [Vector2; 2] {
-    [
-        Vector2::new(first[0].x.min(second[0].x), first[0].y.min(second[0].y)),
-        Vector2::new(first[1].x.max(second[1].x), first[1].y.max(second[1].y)),
-    ]
+#[derive(Debug, Clone)]
+pub struct AABB {
+    pub lx: f32,
+    pub rx: f32,
+    pub ly: f32,
+    pub ry: f32,
 }
 
-pub fn get_aabb_intersection(first: &[Vector2; 2], second: &[Vector2; 2]) -> [Vector2; 2] {
-    [
-        Vector2::new(first[0].x.max(second[0].x), first[0].y.max(second[0].y)),
-        Vector2::new(first[1].x.min(second[1].x), first[1].y.min(second[1].y)),
-    ]
-}
+impl AABB {
+    pub fn with_point(&self, other: &Vector2) -> AABB {
+        AABB {
+            lx: self.lx.min(other.x),
+            rx: self.rx.max(other.x),
+            ly: self.ly.min(other.y),
+            ry: self.ry.max(other.y),
+        }
+    }
 
-pub fn is_aabb_colliding(first: &[Vector2; 2], second: &[Vector2; 2]) -> bool {
-    first[1].x >= second[0].x
-        && first[0].x <= second[1].x
-        && first[1].y >= second[0].y
-        && first[0].y <= second[1].y
-}
+    pub fn get_union(&self, other: &AABB) -> AABB {
+        AABB {
+            lx: self.lx.min(other.lx),
+            rx: self.rx.max(other.rx),
+            ly: self.ly.min(other.ly),
+            ry: self.ry.max(other.ry),
+        }
+    }
 
-pub fn is_aabb_inside(first: &[Vector2; 2], second: &[Vector2; 2]) -> bool {
-    first[1].x >= second[1].x
-        && first[0].x <= second[0].x
-        && first[1].y >= second[1].y
-        && first[0].y <= second[0].y
+    pub fn get_intersection(&self, other: &AABB) -> AABB {
+        AABB {
+            lx: self.lx.max(other.lx),
+            rx: self.rx.min(other.rx),
+            ly: self.ly.max(other.ly),
+            ry: self.ry.min(other.ry),
+        }
+    }
+
+    pub fn get_dist(&self, other: &AABB) -> f32 {
+        let center_x = (self.lx + self.rx) / 2.0;
+        let center_y = (self.ly + self.ry) / 2.0;
+        let width_x = self.rx - self.lx;
+        let width_y = self.ry - self.ly;
+        let other_center_x = (other.lx + other.rx) / 2.0;
+        let other_center_y = (other.ly + other.ry) / 2.0;
+        let other_width_x = other.rx - other.lx;
+        let other_width_y = other.ry - other.ly;
+        let dx = (center_x - other_center_x).abs() - (width_x / 2.0 + other_width_x / 2.0);
+        let dy = (center_y - other_center_y).abs() - (width_y / 2.0 + other_width_y / 2.0);
+        (dx * dx).copysign(dx) + (dy * dy).copysign(dy)
+    }
+
+    pub fn is_colliding(&self, other: &AABB) -> bool {
+        self.rx >= other.lx && self.lx <= other.rx && self.ry >= other.ly && self.ly <= other.ry
+    }
+
+    pub fn is_colliding_with_map(&self, other: &AABB, map: [bool; 4]) -> bool {
+        (map[0] || self.rx >= other.lx)
+            && (map[1] || self.lx <= other.rx)
+            && (map[2] || self.ry >= other.ly)
+            && (map[3] || self.ly <= other.ry)
+    }
+
+    pub fn is_inside(&self, other: &AABB) -> bool {
+        self.rx >= other.rx && self.lx <= other.lx && self.ry >= other.ry && self.ly <= other.ly
+    }
 }

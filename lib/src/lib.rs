@@ -73,8 +73,8 @@ impl<'a> System<'a> for UpdatePhysics {
                 // }
                 if let Some(col) = col_m {
                     bvh.update(
-                        (col.get_bounding_box(&old_pos), ent.id() as u32),
-                        (col.get_bounding_box(&pos.0), ent.id() as u32),
+                        (&col.get_bounding_box(&old_pos), ent.id() as u32),
+                        (&col.get_bounding_box(&pos.0), ent.id() as u32),
                     );
                 }
             }
@@ -142,101 +142,102 @@ impl<'a> System<'a> for CollideEnities {
         )
             .join()
             .collect::<Vec<_>>();
-        // .filter(|(_, col, _)| col.physics_collider)
-        // .collect();
 
         if let Some(ref bvh) = *bvh_tree {
-            if let Some(max_id) = entity_data.iter().map(|e| e.3.id()).max() {
-                if let Some(min_id) = entity_data.iter().map(|e| e.3.id()).min() {
-                    let size = (1 + max_id) as usize;
-                    // println!(
-                    //     "{} {} {:#?}",
-                    //     min_id,
-                    //     max_id,
-                    //     bvh.get_children_id().iter().max()
-                    // );
+            // if let Some(max_id) = entity_data.iter().map(|e| e.3.id()).max() {
+            //     if let Some(min_id) = entity_data.iter().map(|e| e.3.id()).min() {
+            // let size = (1 + max_id) as usize;
+            // println!(
+            //     "{} {} {:#?}",
+            //     min_id,
+            //     max_id,
+            //     bvh.get_children_id().iter().max()
+            // );
 
-                    // costly
-                    let mut old_data = Vec::with_capacity(size);
-                    old_data.resize(size, None);
-                    for e in &entity_data {
-                        old_data[e.3.id() as usize] =
-                            Some((e.0 .0, e.2.as_deref().cloned(), e.1.clone()));
-                    }
-                    // let old_data: Vec<_> = entity_data.iter()
-                    //     .map(|e| (e.0 .0, e.2.as_deref().cloned(), e.1.clone()))
-                    //     .collect();
+            // let mut old_data = Vec::with_capacity(size);
+            // old_data.resize(size, None);
+            // for e in &entity_data {
+            //     old_data[e.3.id() as usize] =
+            //         Some((e.0 .0, e.2.as_deref().cloned(), e.1.clone()));
+            // }
+            //     }
+            // }
+            // costly
+            let old_data: Vec<_> = entity_data
+                .iter()
+                .map(|e| Some((e.0 .0, e.2.as_deref().cloned(), e.1.clone())))
+                .collect();
+            // let old_data: Vec<_> = entity_data.iter()
+            //     .map(|e| (e.0 .0, e.2.as_deref().cloned(), e.1.clone()))
+            //     .collect();
 
-                    // let mut d = Vec::new();
-                    // for (i, (e, old_pos)) in entity_data.into_iter().zip(old_positions).enumerate() {
-                    //     let hs = &*HS1;
-                    //     d.push((i as i32, e.1.get_bounding_box(&old_pos), Some(hs)));
+            // let mut d = Vec::new();
+            // for (i, (e, old_pos)) in entity_data.into_iter().zip(old_positions).enumerate() {
+            //     let hs = &*HS1;
+            //     d.push((i as i32, e.1.get_bounding_box(&old_pos), Some(hs)));
+            // }
+            // bvh.query_rect_batched(&d);
+
+            // for i in 1..entity_data.len() + 1 {
+            //     let hs = &*HS1;
+
+            //     let (l, r) = entity_data.split_at_mut(i);
+            //     let p = &mut l[l.len() - 1];
+            //     let old_pos = &old_positions[i - 1];
+            //     let collisions = bvh.query_rect(p.1.get_bounding_box(&old_pos), Some(hs));
+
+            //     for p2_index in &collisions {
+            //         // make sure collisions are not handled twice
+            //         if p2_index >= &(i as u32) {
+            //             // println!("{:?}", p2_index);
+            //             let p2m = &mut r[(*p2_index) as usize - i];
+            //             let p2_pos = &old_positions[(*p2_index) as usize];
+            //             let overlap_vec = p.1.get_collision(&old_pos, &p2_pos, &p2m.1);
+            //             if let Some(unwraped) = overlap_vec {
+            //                 p.2.resolve_collision(&mut p.0 .0, &mut p2m.0 .0, &mut p2m.2, unwraped);
+            //             }
+            //         }
+            //     }
+            // }
+
+            entity_data.into_par_iter().for_each(|ref mut p| {
+                let first_id = p.3.id();
+                let old = old_data[first_id as usize].as_ref().unwrap().0;
+                let collisions: Vec<_> = bvh
+                    .query_rect(p.1.get_bounding_box(&old), None)
+                    .iter()
+                    .filter(|id| **id != first_id)
+                    .copied()
+                    .collect();
+                for p2_id in &collisions {
+                    // if old_data[*p2_id as usize].is_none() {
+                    //     println!("{:#?}", *p2_id);
                     // }
-                    // bvh.query_rect_batched(&d);
-
-                    // for i in 1..entity_data.len() + 1 {
-                    //     let hs = &*HS1;
-
-                    //     let (l, r) = entity_data.split_at_mut(i);
-                    //     let p = &mut l[l.len() - 1];
-                    //     let old_pos = &old_positions[i - 1];
-                    //     let collisions = bvh.query_rect(p.1.get_bounding_box(&old_pos), Some(hs));
-
-                    //     for p2_index in &collisions {
-                    //         // make sure collisions are not handled twice
-                    //         if p2_index >= &(i as u32) {
-                    //             // println!("{:?}", p2_index);
-                    //             let p2m = &mut r[(*p2_index) as usize - i];
-                    //             let p2_pos = &old_positions[(*p2_index) as usize];
-                    //             let overlap_vec = p.1.get_collision(&old_pos, &p2_pos, &p2m.1);
-                    //             if let Some(unwraped) = overlap_vec {
-                    //                 p.2.resolve_collision(&mut p.0 .0, &mut p2m.0 .0, &mut p2m.2, unwraped);
-                    //             }
-                    //         }
-                    //     }
-                    // }
-
-                    entity_data.into_par_iter().for_each(|ref mut p| {
-                        let first_id = p.3.id();
-                        let old = old_data[first_id as usize].as_ref().unwrap().0;
-                        let collisions: Vec<_> = bvh
-                            .query_rect(p.1.get_bounding_box(&old), None)
-                            .iter()
-                            .filter(|id| **id != first_id)
-                            .copied()
-                            .collect();
-                        for p2_id in &collisions {
-                            // if old_data[*p2_id as usize].is_none() {
-                            //     println!("{:#?}", *p2_id);
-                            // }
-                            let p2 = old_data[*p2_id as usize].as_ref().unwrap();
-                            let overlap_vec = p.1.get_collision(&old, &p2.0, &p2.2);
-                            if let Some(unwraped) = overlap_vec {
-                                // make sure collisions are not handled twice, but we calculate it twice
-                                if p.1.physics_collider {
-                                    if p2.2.physics_collider {
-                                        if let Some(ref mut phys) = p.2 {
-                                            if let Some(p2_phys) = &p2.1 {
-                                                phys.resolve_collision_single(
-                                                    &mut p.0 .0,
-                                                    &p2.0,
-                                                    p2_phys,
-                                                    unwraped,
-                                                );
-                                            }
-                                        }
-                                    }
+                    let p2 = old_data[*p2_id as usize].as_ref().unwrap();
+                    let overlap_vec = p.1.get_collision(&old, &p2.0, &p2.2);
+                    if let Some(unwraped) = overlap_vec {
+                        // make sure collisions are not handled twice, but we calculate it twice
+                        if p.1.physics_collider && p2.2.physics_collider {
+                            if let Some(ref mut phys) = p.2 {
+                                if let Some(p2_phys) = &p2.1 {
+                                    phys.resolve_collision_single(
+                                        &mut p.0 .0,
+                                        &p2.0,
+                                        p2_phys,
+                                        unwraped,
+                                    );
                                 }
                             }
                         }
-                        *p.4 = utils::Collisions(collisions);
-                    });
+                    }
                 }
-            }
+                *p.4 = utils::Collisions(collisions);
+            });
         }
     }
 }
 
+/// Builds the world
 pub fn build<'a, 'b>() -> (RaylibHandle, RaylibThread, World, DispatcherBuilder<'a, 'b>) {
     let (rl, thread) = raylib::init()
         .resizable()
@@ -266,9 +267,7 @@ pub fn build<'a, 'b>() -> (RaylibHandle, RaylibThread, World, DispatcherBuilder<
     (rl, thread, world, dispatcher)
 }
 
-/// update loop
-// 750 particles 100fps
-// 2300 particles 100fps
+/// Finalizes the world, run this after adding custom systems
 pub fn init<'a, 'b>(
     state: (RaylibHandle, RaylibThread, World, DispatcherBuilder<'a, 'b>),
 ) -> (
@@ -285,6 +284,7 @@ pub fn init<'a, 'b>(
     (state.0, state.1, state.2, dispatcher, time_since_bvh_update)
 }
 
+/// Run this every frame
 pub fn update<'a, 'b>(
     state: &mut (
         raylib::RaylibHandle,
@@ -303,10 +303,14 @@ pub fn update<'a, 'b>(
         *time_since_bvh_update += delta.0;
     }
 
-    world.maintain();
-    dispatcher.dispatch(&world);
+    // update screen size
+    if rl.is_window_resized() {
+        let mut size = world.write_resource::<[i32; 2]>();
+        *size = [rl.get_screen_width(), rl.get_screen_height()]
+    }
 
-    // update input map
+    world.maintain();
+    dispatcher.dispatch(world);
 
     // update bvh
     {
@@ -321,7 +325,7 @@ pub fn update<'a, 'b>(
 
     // draw everything
     {
-        let mut d = rl.begin_drawing(&thread);
+        let mut d = rl.begin_drawing(thread);
         d.clear_background(Color::WHITE);
 
         {
@@ -334,7 +338,7 @@ pub fn update<'a, 'b>(
             )
                 .join()
             {
-                let (r, pos, phys, col) = data;
+                let (r, pos, _phys, _col) = data;
                 r.render(&mut d, pos);
             }
         }

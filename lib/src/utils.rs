@@ -1,10 +1,9 @@
 use crate::bvh::BVHTree;
-use crate::collider::Collider;
+use crate::collider;
 use crate::World;
 use crate::Write;
 use crate::MIN_BHV_UPDATE_TIME;
 use raylib::core::math::Vector2;
-use raylib::RaylibHandle;
 use specs::{Component, VecStorage};
 use std::collections::HashSet;
 
@@ -19,11 +18,11 @@ pub struct Collisions(pub Vec<u32>);
 #[derive(Default)]
 pub struct Delta(pub f32);
 
-#[derive(Default)]
-pub struct Inputs {
-    mouse_pos: Vector2,
-    keys_down: u32,
-}
+// #[derive(Default)]
+// pub struct Inputs {
+//     mouse_pos: Vector2,
+//     keys_down: u32,
+// }
 
 // impl Inputs {
 //     fn new(rl: &RaylibHandle) -> Inputs {
@@ -41,7 +40,13 @@ pub fn from_tuple(t: [f32; 2]) -> Vector2 {
 }
 
 pub fn register_ent(
-    tuple_data: (&Collider, Vector2, [Vector2; 2], u32, HashSet<i8>),
+    tuple_data: (
+        &collider::Collider,
+        Vector2,
+        collider::AABB,
+        u32,
+        HashSet<i8>,
+    ),
     world: &mut World,
     time_since_bvh_update: &mut f32,
 ) {
