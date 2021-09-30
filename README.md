@@ -10,4 +10,6 @@ Goals:
 Todo:
 - [x] use specs entity component system
 - [x] parrellize physics
-- [ ] add collision callbacks
+- [x] add collision callbacks
+- [ ] add lazy updating to bvh
+- [ ] more physics objects
