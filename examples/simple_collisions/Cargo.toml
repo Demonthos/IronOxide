@@ -1,0 +1,7 @@
+[package]
+name = "simple_collisions"
+version = "0.1.0"
+authors = ["Evan Almloff"]
+
+[dependencies]
+iron_oxide = { path = "../../lib" }
