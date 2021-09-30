@@ -15,6 +15,7 @@ use iron_oxide::Join;
 const INITIAL_VELOCITY: f32 = 400f32;
 const RADIUS: f32 = 5.0f32;
 const DEBUG_BVH: bool = true;
+const DEBUG_AABB: bool = false;
 
 struct UpdateVelocity;
 
@@ -55,7 +56,7 @@ impl<'a> iron_oxide::System<'a> for UpdateVelocity {
                     .map(|i| old_positions[(*i) as usize])
                     .filter_map(|position| {
                         let d = position.distance_to(*old_pos);
-                        if d < (bb[1].x - bb[0].x) / 3.0 {
+                        if d < (bb.rx - bb.lx) / 3.0 {
                             Some((*old_pos - position) / d)
                         } else {
                             None
@@ -71,20 +72,20 @@ impl<'a> iron_oxide::System<'a> for UpdateVelocity {
                     .reduce(|i1, i2| i1 + i2);
 
                 if let Some(sum_vel) = sum_vel_o {
-                    p.2.velocity += sum_vel.normalized() * 4.0;
+                    p.2.velocity += sum_vel.normalized() * 1.0;
                 }
 
                 if let Some(sum_pos) = sum_pos_o {
                     let dif_pos = *old_pos - (sum_pos / collisions.len() as f32);
 
                     if dif_pos.length_sqr() > 0.0 {
-                        p.2.velocity -= dif_pos.normalized() * 4.0;
+                        p.2.velocity -= dif_pos.normalized() * 1.0;
                     }
                 }
 
                 if let Some(sum_close) = sum_close_o {
                     if sum_close.length_sqr() > 0.0 {
-                        p.2.velocity += sum_close.normalized() * 5.0;
+                        p.2.velocity += sum_close.normalized() * 2.0;
                     }
                 }
             }
@@ -112,7 +113,10 @@ impl<'a> iron_oxide::System<'a> for UpdateVelocity {
 }
 
 struct EntCount(usize);
+struct MousePos(iron_oxide::Vector2);
 
+/// update loop
+// 2200 particles 100fps
 fn main() {
     let mut builder = iron_oxide::build();
 
@@ -123,21 +127,35 @@ fn main() {
     let mut data = iron_oxide::init(builder);
     let timer = data.0.get_time();
     data.2.insert(EntCount(0));
+    data.2.insert(MousePos(data.0.get_mouse_position()));
     data.2.insert(timer);
 
     let mut rng = iron_oxide::rand::thread_rng();
 
-    for _ in 0..500 {
+    for _ in 0..1 {
         gen_enity(&mut data.2, &mut rng, &mut data.4);
     }
 
     while !data.0.window_should_close() {
+        let l_m_down = data
+            .0
+            .is_mouse_button_down(iron_oxide::MouseButton::MOUSE_RIGHT_BUTTON);
+
+        {
+            data.2.write_resource::<MousePos>().0 = data.0.get_mouse_position();
+        }
+
+        if data.0.get_fps() > 100 {
+            // if data.0.is_key_down(iron_oxide::KeyboardKey::KEY_SPACE) {
+            if data.0.get_time() - timer > 0.01 {
+                gen_enity(&mut data.2, &mut rng, &mut data.4);
+            }
+        }
         iron_oxide::update(&mut data, draw);
     }
 }
 
 fn draw(world: &mut iron_oxide::World, d: &mut iron_oxide::prelude::RaylibDrawHandle) {
-    let rng = iron_oxide::rand::thread_rng();
     // if rl.is_key_pressed(iron_oxide::KeyboardKey::KEY_R) {
     //     entity_count = 0;
     //     world.delete_all();
@@ -149,11 +167,6 @@ fn draw(world: &mut iron_oxide::World, d: &mut iron_oxide::prelude::RaylibDrawHa
     // }
 
     // let mouse_pos = rl.get_mouse_position();
-
-    // {
-    //     let mut size = world.write_resource::<[i32; 2]>();
-    //     *size = [rl.get_screen_width(), rl.get_screen_height()]
-    // }
 
     // {
     //     let mut system_data: (
@@ -171,15 +184,6 @@ fn draw(world: &mut iron_oxide::World, d: &mut iron_oxide::prelude::RaylibDrawHa
     //             //     phys.velocity += vec_2d;
     //             phys.velocity += (mouse_pos - pos.0).normalized() * 20.0;
     //         }
-    //     }
-    // }
-
-    // let l_m_down = rl.is_mouse_button_down(iron_oxide::MouseButton::MOUSE_RIGHT_BUTTON);
-
-    // if rl.get_fps() > 100 {
-    //     // if rl.is_key_down(KeyboardKey::KEY_SPACE) {
-    //     if rl.get_time() - timer > 0.01 {
-    //         gen_enity()
     //     }
     // }
 
@@ -215,39 +219,54 @@ fn draw(world: &mut iron_oxide::World, d: &mut iron_oxide::prelude::RaylibDrawHa
                 }
             }
             // if l_m_down {
-            if let Some(c) = col {
-                let bb = c.get_bounding_box(&pos.0);
-                let bb_size = bb[1] - bb[0];
-                d.draw_rectangle_lines(
-                    bb[0].x as i32,
-                    bb[0].y as i32,
-                    bb_size.x as i32,
-                    bb_size.y as i32,
-                    iron_oxide::Color::new(0, 255, 0, 100),
-                )
+            if DEBUG_AABB {
+                if let Some(c) = col {
+                    let bb = c.get_bounding_box(&pos.0);
+                    d.draw_rectangle_lines(
+                        bb.lx as i32,
+                        bb.ly as i32,
+                        (bb.rx - bb.lx) as i32,
+                        (bb.ry - bb.ly) as i32,
+                        iron_oxide::Color::new(0, 255, 0, 100),
+                    )
+                }
             }
             // }
             // d.draw_circle_v(p.position, 10f32, Color::new(255, 0, 255, 0));
         }
 
         if DEBUG_BVH {
+            let mut cost = 0;
             let bvh_read: iron_oxide::Read<Option<iron_oxide::bvh::BVHTree>> = world.system_data();
             if let Some(bvh_root) = &*bvh_read {
-                for node in bvh_root.get_children() {
+                let p = world.read_resource::<MousePos>().0;
+                for node in bvh_root.debug_query_point(p, None).1 {
                     let rect;
-                    match node {
+                    match node.0 {
                         iron_oxide::bvh::Node::Branch(bb, _) => rect = bb,
+                        // iron_oxide::bvh::Node::Branch(bb, _, _) => rect = bb,
                         iron_oxide::bvh::Node::Fruit(bb, _, _) => rect = bb,
                     }
+                    cost += 1;
+                    let mut color =
+                        iron_oxide::Color::color_from_hsv(node.1 as f32 * 10.0, 1.0, 1.0);
+                    color.a = 50;
                     d.draw_rectangle(
-                        rect[0].x as i32,
-                        rect[0].y as i32,
-                        (rect[1].x - rect[0].x) as i32,
-                        (rect[1].y - rect[0].y) as i32,
-                        iron_oxide::Color::new(255, 0, 0, 5),
+                        rect.lx as i32,
+                        rect.ly as i32,
+                        (rect.rx - rect.lx) as i32,
+                        (rect.ry - rect.ly) as i32,
+                        color,
                     );
                 }
             }
+            d.draw_text(
+                format!("{:?}", cost).as_str(),
+                0,
+                40,
+                20,
+                iron_oxide::Color::RED,
+            );
         }
     }
     d.draw_text(
@@ -292,10 +311,13 @@ fn gen_enity(
             world.write_resource::<EntCount>().0 += 1;
         }
         let collider = iron_oxide::collider::Collider {
+            // shape: iron_oxide::collider::Shape::RectangeCollider {
+            //     size: iron_oxide::Vector2::one() * radius * 20.0,
+            // },
             shape: iron_oxide::collider::Shape::CircleCollider {
-                radius: radius * 1.0,
+                radius: radius * 10.0,
             },
-            physics_collider: true,
+            physics_collider: false,
         };
 
         let e = world
@@ -303,15 +325,15 @@ fn gen_enity(
             .with(iron_oxide::utils::Position(position))
             .with(particle_physics)
             .with(collider.clone())
-            // .with(iron_oxide::renderer::Renderer::RectangeRenderer {
-            //     size: iron_oxide::Vector2::new(radius * 2f32, radius * 2f32),
-            //     color: Color::new(0, 0, 0, 255),
-            // })
-            .with(iron_oxide::utils::Collisions(Vec::new()))
-            .with(iron_oxide::renderer::Renderer::CircleRenderer {
-                radius,
+            .with(iron_oxide::renderer::Renderer::RectangeRenderer {
+                size: iron_oxide::Vector2::new(radius * 2f32, radius * 2f32),
                 color: Color::new(0, 0, 0, 255),
             })
+            .with(iron_oxide::utils::Collisions(Vec::new()))
+            // .with(iron_oxide::renderer::Renderer::CircleRenderer {
+            //     radius,
+            //     color: Color::new(0, 0, 0, 255),
+            // })
             .build();
 
         iron_oxide::utils::register_ent(
