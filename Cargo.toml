@@ -3,7 +3,8 @@
 [workspace]
 members = [
     "lib",
-    "examples\\boid"
+    "examples\\boid",
+    "examples\\simple_collisions"
 ]
 
 [profile.release]
