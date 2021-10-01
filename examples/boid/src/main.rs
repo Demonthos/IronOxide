@@ -25,35 +25,45 @@ impl<'a> iron_oxide::System<'a> for UpdateVelocity {
         iron_oxide::ReadStorage<'a, iron_oxide::collider::Collider>,
         iron_oxide::WriteStorage<'a, iron_oxide::physics::Physics>,
         iron_oxide::ReadStorage<'a, iron_oxide::utils::Collisions>,
+        iron_oxide::Entities<'a>,
         iron_oxide::Read<'a, [i32; 2]>,
     );
 
     fn run(&mut self, mut data: Self::SystemData) {
-        let size = data.4;
-        let mut entity_data: Vec<_> = (&mut data.0, &data.1, &mut data.2, &data.3)
+        let size = data.5;
+        let mut entity_data: Vec<_> = (&mut data.0, &data.1, &mut data.2, &data.3, &data.4)
             .join()
             .collect();
 
         // costly
-        let old_positions: Vec<iron_oxide::Vector2> =
-            (&entity_data).iter().map(|t| t.0 .0).collect();
-        let old_physics: Vec<iron_oxide::physics::Physics> =
-            (&entity_data).iter().map(|t| t.2.clone()).collect();
+        // let old_positions: Vec<iron_oxide::Vector2> =
+        //     (&entity_data).iter().map(|t| t.0 .0).collect();
+        // let old_physics: Vec<iron_oxide::physics::Physics> =
+        //     (&entity_data).iter().map(|t| t.2.clone()).collect();
 
-        entity_data.par_iter_mut().enumerate().for_each(|(i, p)| {
-            let old_pos = &old_positions[i];
+        let mut old_data = Vec::new();
+
+        for e in &entity_data {
+            let id = e.4.id() as usize;
+            old_data.resize(id + 1, None);
+            old_data[id] = Some((e.0 .0, e.2.clone()));
+        }
+
+        entity_data.par_iter_mut().for_each(|p| {
+            let id = p.4.id() as usize;
+            let old_pos = &old_data[id].as_ref().unwrap().0;
             let bb = p.1.get_bounding_box(old_pos);
             let collisions = &p.3 .0;
 
             if !collisions.is_empty() {
                 let sum_pos_o = collisions
                     .iter()
-                    .map(|i| old_positions[(*i) as usize])
+                    .map(|i| old_data[*i as usize].as_ref().unwrap().0)
                     .reduce(|i1, i2| i1 + i2);
 
                 let close_vec: Vec<_> = collisions
                     .iter()
-                    .map(|i| old_positions[(*i) as usize])
+                    .map(|i| old_data[*i as usize].as_ref().unwrap().0)
                     .filter_map(|position| {
                         let d = position.distance_to(*old_pos);
                         if d < (bb.rx - bb.lx) / 3.0 {
@@ -68,7 +78,7 @@ impl<'a> iron_oxide::System<'a> for UpdateVelocity {
 
                 let sum_vel_o = collisions
                     .iter()
-                    .map(|i| old_physics[(*i) as usize].velocity)
+                    .map(|i| old_data[*i as usize].as_ref().unwrap().1.velocity)
                     .reduce(|i1, i2| i1 + i2);
 
                 if let Some(sum_vel) = sum_vel_o {
@@ -145,23 +155,27 @@ fn main() {
             data.2.write_resource::<MousePos>().0 = data.0.get_mouse_position();
         }
 
-        if data.0.get_fps() > 100 {
-            // if data.0.is_key_down(iron_oxide::KeyboardKey::KEY_SPACE) {
-            if data.0.get_time() - timer > 0.01 {
-                gen_enity(&mut data.2, &mut rng, &mut data.4);
+        if data.0.is_key_pressed(iron_oxide::KeyboardKey::KEY_R) {
+            data.2.write_resource::<EntCount>().0 = 0;
+
+            *data.2.write_resource::<Option<iron_oxide::bvh::BVHTree>>() = None;
+
+            data.2.delete_all();
+            data.2.maintain();
+        } else {
+            if data.0.get_fps() > 100 {
+                // if data.0.is_key_down(iron_oxide::KeyboardKey::KEY_SPACE) {
+                if data.0.get_time() - timer > 0.01 {
+                    gen_enity(&mut data.2, &mut rng, &mut data.4);
+                }
             }
         }
+
         iron_oxide::update(&mut data, draw);
     }
 }
 
 fn draw(world: &mut iron_oxide::World, d: &mut iron_oxide::prelude::RaylibDrawHandle) {
-    // if rl.is_key_pressed(iron_oxide::KeyboardKey::KEY_R) {
-    //     entity_count = 0;
-    //     world.delete_all();
-    //     world.maintain();
-    // }
-
     // if rl.is_key_pressed(iron_oxide::KeyboardKey::KEY_SPACE) {
     //     timer = rl.get_time();
     // }
