@@ -39,7 +39,7 @@ pub type RenderingData<'a> = (
     WriteStorage<'a, collider::Collider>,
 );
 
-type BvhData<'a> = (
+pub type BvhData<'a> = (
     Entities<'a>,
     ReadStorage<'a, utils::Position>,
     ReadStorage<'a, collider::Collider>,
@@ -144,29 +144,20 @@ impl<'a> System<'a> for CollideEnities {
             .collect::<Vec<_>>();
 
         if let Some(ref bvh) = *bvh_tree {
-            // if let Some(max_id) = entity_data.iter().map(|e| e.3.id()).max() {
-            //     if let Some(min_id) = entity_data.iter().map(|e| e.3.id()).min() {
-            // let size = (1 + max_id) as usize;
-            // println!(
-            //     "{} {} {:#?}",
-            //     min_id,
-            //     max_id,
-            //     bvh.get_children_id().iter().max()
-            // );
-
-            // let mut old_data = Vec::with_capacity(size);
-            // old_data.resize(size, None);
-            // for e in &entity_data {
-            //     old_data[e.3.id() as usize] =
-            //         Some((e.0 .0, e.2.as_deref().cloned(), e.1.clone()));
-            // }
-            //     }
-            // }
             // costly
-            let old_data: Vec<_> = entity_data
-                .iter()
-                .map(|e| Some((e.0 .0, e.2.as_deref().cloned(), e.1.clone())))
-                .collect();
+            // let old_data: Vec<_> = entity_data
+            //     .iter()
+            //     .map(|e| Some((e.0 .0, e.2.as_deref().cloned(), e.1.clone())))
+            //     .collect();
+
+            let mut old_data = Vec::new();
+
+            for e in &entity_data {
+                let id = e.3.id() as usize;
+                old_data.resize(id + 1, None);
+                old_data[id] = Some((e.0 .0, e.2.as_deref().cloned(), e.1.clone()));
+            }
+
             // let old_data: Vec<_> = entity_data.iter()
             //     .map(|e| (e.0 .0, e.2.as_deref().cloned(), e.1.clone()))
             //     .collect();
@@ -316,7 +307,7 @@ pub fn update<'a, 'b>(
     {
         let bvh_data: BvhData = world.system_data();
         let mut bvh_write: Write<Option<bvh::BVHTree>> = world.system_data();
-        if *time_since_bvh_update > MIN_BHV_UPDATE_TIME {
+        if *time_since_bvh_update > MIN_BHV_UPDATE_TIME || bvh_write.is_none() {
             *bvh_write = create_bvh(bvh_data);
             // println!("{:?}", time_since_bvh_update);
             *time_since_bvh_update = 0f32;
@@ -348,7 +339,7 @@ pub fn update<'a, 'b>(
     }
 }
 
-fn create_bvh(entities: BvhData) -> Option<bvh::BVHTree> {
+pub fn create_bvh(entities: BvhData) -> Option<bvh::BVHTree> {
     let mut data = Vec::new();
 
     for entity in (&entities.0, &entities.1, &entities.2).join() {
@@ -360,10 +351,9 @@ fn create_bvh(entities: BvhData) -> Option<bvh::BVHTree> {
         data.push((col, pos.0, col.get_bounding_box(&pos.0), id, HS1.clone()));
     }
 
-    if data.len() > 0{
-        bvh::BVHTree::new(data)
-    }
-    else{
+    if data.len() > 0 {
+        Some(bvh::BVHTree::new(data))
+    } else {
         None
     }
 }
