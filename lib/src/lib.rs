@@ -317,7 +317,7 @@ pub fn update<'a, 'b>(
         let bvh_data: BvhData = world.system_data();
         let mut bvh_write: Write<Option<bvh::BVHTree>> = world.system_data();
         if *time_since_bvh_update > MIN_BHV_UPDATE_TIME {
-            *bvh_write = Some(create_bvh(bvh_data));
+            *bvh_write = create_bvh(bvh_data);
             // println!("{:?}", time_since_bvh_update);
             *time_since_bvh_update = 0f32;
         }
@@ -348,7 +348,7 @@ pub fn update<'a, 'b>(
     }
 }
 
-fn create_bvh(entities: BvhData) -> bvh::BVHTree {
+fn create_bvh(entities: BvhData) -> Option<bvh::BVHTree> {
     let mut data = Vec::new();
 
     for entity in (&entities.0, &entities.1, &entities.2).join() {
@@ -360,5 +360,10 @@ fn create_bvh(entities: BvhData) -> bvh::BVHTree {
         data.push((col, pos.0, col.get_bounding_box(&pos.0), id, HS1.clone()));
     }
 
-    bvh::BVHTree::new(data)
+    if data.len() > 0{
+        bvh::BVHTree::new(data)
+    }
+    else{
+        None
+    }
 }
