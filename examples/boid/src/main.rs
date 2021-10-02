@@ -143,7 +143,7 @@ fn main() {
     let mut rng = iron_oxide::rand::thread_rng();
 
     for _ in 0..1 {
-        gen_enity(&mut data.2, &mut rng, &mut data.4);
+        gen_enity(&mut data.2, &mut rng);
     }
 
     while !data.0.window_should_close() {
@@ -166,7 +166,7 @@ fn main() {
             if data.0.get_fps() > 100 {
                 // if data.0.is_key_down(iron_oxide::KeyboardKey::KEY_SPACE) {
                 if data.0.get_time() - timer > 0.01 {
-                    gen_enity(&mut data.2, &mut rng, &mut data.4);
+                    gen_enity(&mut data.2, &mut rng);
                 }
             }
         }
@@ -254,7 +254,10 @@ fn draw(world: &mut iron_oxide::World, d: &mut iron_oxide::prelude::RaylibDrawHa
             let bvh_read: iron_oxide::Read<Option<iron_oxide::bvh::BVHTree>> = world.system_data();
             if let Some(bvh_root) = &*bvh_read {
                 let p = world.read_resource::<MousePos>().0;
-                for node in bvh_root.debug_query_point(p, None).1 {
+                for node in bvh_root
+                    .debug_query_point(&p, &[true; iron_oxide::collider::LAYERS])
+                    .1
+                {
                     let rect;
                     match node.0 {
                         iron_oxide::bvh::Node::Branch(bb, _) => rect = bb,
@@ -292,11 +295,7 @@ fn draw(world: &mut iron_oxide::World, d: &mut iron_oxide::prelude::RaylibDrawHa
     );
 }
 
-fn gen_enity(
-    world: &mut iron_oxide::World,
-    rng: &mut impl iron_oxide::rand::Rng,
-    bvh_update: &mut f32,
-) {
+fn gen_enity(world: &mut iron_oxide::World, rng: &mut impl iron_oxide::rand::Rng) {
     {
         let x_size;
         let y_size;
@@ -324,14 +323,20 @@ fn gen_enity(
         {
             world.write_resource::<EntCount>().0 += 1;
         }
+
+        let mut layers = [false; iron_oxide::collider::LAYERS];
+        layers[0] = true;
+        let mut mask = [false; iron_oxide::collider::LAYERS];
+        mask[0] = true;
+
         let collider = iron_oxide::collider::Collider {
             // shape: iron_oxide::collider::Shape::RectangeCollider {
-            //     size: iron_oxide::Vector2::one() * radius * 20.0,
+            //     size: iron_oxide::Vector2::one() * radius,
             // },
-            shape: iron_oxide::collider::Shape::CircleCollider {
-                radius: radius * 10.0,
-            },
+            shape: iron_oxide::collider::Shape::CircleCollider { radius: radius },
             physics_collider: false,
+            collision_layers: layers,
+            collision_mask: mask,
         };
 
         let e = world
@@ -343,11 +348,11 @@ fn gen_enity(
                 size: iron_oxide::Vector2::new(radius * 2f32, radius * 2f32),
                 color: Color::new(0, 0, 0, 255),
             })
-            .with(iron_oxide::utils::Collisions(Vec::new()))
             // .with(iron_oxide::renderer::Renderer::CircleRenderer {
             //     radius,
             //     color: Color::new(0, 0, 0, 255),
             // })
+            .with(iron_oxide::utils::Collisions(Vec::new()))
             .build();
 
         iron_oxide::utils::register_ent(
@@ -356,10 +361,8 @@ fn gen_enity(
                 position,
                 collider.get_bounding_box(&position),
                 e.id(),
-                HashSet::new(),
             ),
             world,
-            bvh_update,
         );
     }
 }
