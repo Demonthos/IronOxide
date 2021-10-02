@@ -3,7 +3,6 @@ use crate::collider;
 use crate::Entities;
 use crate::World;
 use crate::Write;
-use crate::MIN_BHV_UPDATE_TIME;
 use raylib::core::math::Vector2;
 use specs::{Component, VecStorage};
 use std::collections::HashSet;
@@ -41,13 +40,7 @@ pub fn from_tuple(t: [f32; 2]) -> Vector2 {
 }
 
 pub fn register_ent(
-    tuple_data: (
-        &collider::Collider,
-        Vector2,
-        collider::AABB,
-        u32,
-        HashSet<i8>,
-    ),
+    tuple_data: (&collider::Collider, Vector2, collider::AABB, u32),
     world: &mut World,
 ) {
     let mut bvh_write: Write<Option<BVHTree>> = world.system_data();

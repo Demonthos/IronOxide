@@ -1,6 +1,8 @@
 use raylib::math::Vector2;
 use specs::{Component, VecStorage};
 
+pub const LAYERS: usize = 128;
+
 /// Handles narrow phase collisions, and generating aabbs.
 // implement bottom up collision caching if physics_collider is true
 #[derive(Debug, Clone, Component)]
@@ -8,6 +10,8 @@ use specs::{Component, VecStorage};
 pub struct Collider {
     pub shape: Shape,
     pub physics_collider: bool,
+    pub collision_layers: [bool; LAYERS],
+    pub collision_mask: [bool; LAYERS],
 }
 
 impl Collider {
@@ -163,7 +167,7 @@ impl AABB {
             && (map[3] || self.ly <= other.ry)
     }
 
-    pub fn contains(&self, other: &AABB, epsilon: f32) -> bool {
-        self.rx - other.rx >= -epsilon && self.lx - other.lx <= -epsilon && self.ry - other.ry >= -epsilon && self.ly - other.ly <= -epsilon
+    pub fn contains(&self, other: &AABB) -> bool {
+        self.rx >= other.rx && self.lx <= other.lx && self.ry >= other.ry && self.ly <= other.ly
     }
 }
