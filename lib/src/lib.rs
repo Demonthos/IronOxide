@@ -195,7 +195,7 @@ impl<'a> System<'a> for CollideEnities {
                 let first_id = p.3.id();
                 let old = old_data[first_id as usize].as_ref().unwrap().0;
                 let collisions: Vec<_> = bvh
-                    .query_rect(p.1.get_bounding_box(&old), None)
+                    .query_rect(&p.1.get_bounding_box(&old), None)
                     .iter()
                     .filter(|id| **id != first_id)
                     .copied()

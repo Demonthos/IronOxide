@@ -117,8 +117,14 @@ impl Node {
         sum_vec
     }
 
-    fn query_point(&self, p: Vector2, layers_option: Option<&HashSet<i8>>) -> Option<Vec<u32>> {
-        let mut result: Option<Vec<u32>> = None;
+    fn traverse<'a, T: Clone, K>(
+        &'a self,
+        p: &K,
+        layers_option: Option<&HashSet<i8>>,
+        collision_callback: fn(&collider::AABB, &K) -> bool,
+        callback: &mut impl FnMut(&'a Node, T) -> T,
+        current_state: T,
+    ) {
         match self {
             Node::Branch(bb, children) => {
                 // if let Some(layers) = layers_option {
@@ -133,20 +139,20 @@ impl Node {
                 //         return result;
                 //     }
                 // }
-                if bb.lx < p.x && bb.rx > p.x && bb.ly < p.y && bb.ry > p.y {
+                if collision_callback(bb, &p) {
+                    let next_state = callback(self, current_state);
                     for child in children {
-                        let child_results = child.query_point(p, layers_option);
-                        if let Some(mut child_collisions) = child_results {
-                            if let Some(ref mut result_vec) = result {
-                                result_vec.append(&mut child_collisions);
-                            } else {
-                                result = Some(child_collisions);
-                            }
-                        }
+                        child.traverse(
+                            p,
+                            layers_option,
+                            collision_callback,
+                            callback,
+                            next_state.clone(),
+                        );
                     }
                 }
             }
-            Node::Fruit(bb, other_data, l) => {
+            Node::Fruit(bb, _, l) => {
                 let mut contains_layer = false;
                 if let Some(layers) = layers_option {
                     for layer in l {
@@ -158,205 +164,137 @@ impl Node {
                 } else {
                     contains_layer = true;
                 }
-                if contains_layer && bb.lx < p.x && bb.rx > p.x && bb.ly < p.y && bb.ry > p.y {
+                if contains_layer && collision_callback(bb, &p) {
+                    callback(self, current_state);
+                }
+            }
+        }
+    }
+
+    fn traverse_point<'a, T: Clone>(
+        &'a self,
+        p: &Vector2,
+        layers_option: Option<&HashSet<i8>>,
+        callback: &mut impl FnMut(&'a Node, T) -> T,
+        current_state: T,
+    ) {
+        fn collide_point(bb: &collider::AABB, p: &Vector2) -> bool {
+            bb.lx < p.x && bb.rx > p.x && bb.ly < p.y && bb.ry > p.y
+        }
+        self.traverse(p, layers_option, collide_point, callback, current_state);
+    }
+
+    fn traverse_rect<'a, T: Clone>(
+        &'a self,
+        r: &collider::AABB,
+        layers_option: Option<&HashSet<i8>>,
+        callback: &mut impl FnMut(&'a Node, T) -> T,
+        current_state: T,
+    ) {
+        fn collide_rect(bb: &collider::AABB, bb2: &collider::AABB) -> bool {
+            bb.is_colliding(bb2)
+        }
+        self.traverse(r, layers_option, collide_rect, callback, current_state);
+    }
+
+    fn query_point(&self, p: &Vector2, layers_option: Option<&HashSet<i8>>) -> Option<Vec<u32>> {
+        let mut result: Option<Vec<u32>> = None;
+        self.traverse_point(
+            p,
+            layers_option,
+            &mut |node, _| match node {
+                Node::Branch(_, _) => (),
+                Node::Fruit(_, other_data, _) => {
                     if let Some(ref mut result_vec) = result {
                         result_vec.push(*other_data);
                     } else {
                         result = Some(vec![*other_data]);
                     }
                 }
-            }
-        }
+            },
+            (),
+        );
         result
     }
 
-    fn debug_query_point(
-        &self,
-        p: Vector2,
+    fn debug_query_point<'a>(
+        &'a self,
+        p: &Vector2,
         layers_option: Option<&HashSet<i8>>,
-        depth: i32,
     ) -> (Option<Vec<u32>>, Vec<(&Node, i32)>) {
-        match self {
-            Node::Branch(bb, children) => {
-                // if let Some(layers) = layers_option {
-                //     let mut contains_layer = false;
-                //     for layer in l {
-                //         if layers.contains(&layer) {
-                //             contains_layer = true;
-                //             break;
-                //         }
-                //     }
-                //     if !contains_layer {
-                //         return None;
-                //     }
-                // }
-                let mut result: (Option<Vec<u32>>, Vec<(&Node, i32)>) = (None, Vec::new());
-                // if depth > 1 {
-                if bb.lx < p.x && bb.rx > p.x && bb.ly < p.y && bb.ry > p.y {
-                    for child in children {
-                        // let child_results = ;
-                        let mut child_data = child.debug_query_point(p, layers_option, depth + 1);
-                        result.1.append(&mut child_data.1);
-                        if let Some(mut child_collisions) = child_data.0 {
-                            if let Some(ref mut result_vec) = result.0 {
-                                result_vec.append(&mut child_collisions);
-                            } else {
-                                result.0 = Some(child_collisions);
-                            }
+        let mut result: (Option<Vec<u32>>, Vec<(&'a Node, i32)>) = (None, Vec::new());
+        self.traverse_point(
+            p,
+            layers_option,
+            &mut |node, depth| {
+                result.1.push((&node, depth));
+                match node {
+                    Node::Branch(_, _) => {}
+                    Node::Fruit(_, other_data, _) => {
+                        if let Some(ref mut result_vec) = result.0 {
+                            result_vec.push(*other_data);
+                        } else {
+                            result.0 = Some(vec![*other_data]);
                         }
                     }
-                    // } else {
-                    //     result.par_extend(
-                    //         children
-                    //             .into_par_iter()
-                    //             .map(|child| child.query_rect(r, layers_option, depth + 1))
-                    //             .flatten(),
-                    //     )
-                    // }
-                    result
-                } else {
-                    (None, vec![(self, depth)])
                 }
-            }
-            Node::Fruit(bb, other_data, l) => {
-                let contains_layer = if let Some(layers) = layers_option {
-                    l.iter().any(|layer| layers.contains(layer))
-                } else {
-                    true
-                };
-                if contains_layer && bb.lx < p.x && bb.rx > p.x && bb.ly < p.y && bb.ry > p.y {
-                    (Some(vec![*other_data]), vec![(self, depth)])
-                } else {
-                    (None, vec![(self, depth)])
-                }
-            }
-        }
+                depth + 1
+            },
+            0i32,
+        );
+        result
     }
 
     fn query_rect(
         &self,
         r: &collider::AABB,
         layers_option: Option<&HashSet<i8>>,
-        depth: i32,
     ) -> Option<Vec<u32>> {
-        match self {
-            Node::Branch(bb, children) => {
-                // if let Some(layers) = layers_option {
-                //     let mut contains_layer = false;
-                //     for layer in l {
-                //         if layers.contains(&layer) {
-                //             contains_layer = true;
-                //             break;
-                //         }
-                //     }
-                //     if !contains_layer {
-                //         return None;
-                //     }
-                // }
-                let mut result: Option<Vec<u32>> = None;
-                // if depth > 1 {
-                if bb.is_colliding(r) {
-                    for child in children {
-                        // let child_results = ;
-                        if let Some(mut child_collisions) =
-                            child.query_rect(r, layers_option, depth + 1)
-                        {
-                            if let Some(ref mut result_vec) = result {
-                                result_vec.append(&mut child_collisions);
-                            } else {
-                                result = Some(child_collisions);
-                            }
-                        }
+        let mut result: Option<Vec<u32>> = None;
+        self.traverse_rect(
+            r,
+            layers_option,
+            &mut |node, _| match node {
+                Node::Branch(_, _) => (),
+                Node::Fruit(_, other_data, _) => {
+                    if let Some(ref mut result_vec) = result {
+                        result_vec.push(*other_data);
+                    } else {
+                        result = Some(vec![*other_data]);
                     }
-                    // } else {
-                    //     result.par_extend(
-                    //         children
-                    //             .into_par_iter()
-                    //             .map(|child| child.query_rect(r, layers_option, depth + 1))
-                    //             .flatten(),
-                    //     )
-                    // }
-                    result
-                } else {
-                    None
                 }
-            }
-            Node::Fruit(bb, other_data, l) => {
-                let contains_layer = if let Some(layers) = layers_option {
-                    l.iter().any(|layer| layers.contains(layer))
-                } else {
-                    true
-                };
-                if contains_layer && bb.is_colliding(r) {
-                    Some(vec![*other_data])
-                } else {
-                    None
-                }
-            }
-        }
+            },
+            (),
+        );
+        result
     }
 
-    fn debug_query_rect(
-        &self,
+    fn debug_query_rect<'a>(
+        &'a self,
         r: &collider::AABB,
         layers_option: Option<&HashSet<i8>>,
-        depth: i32,
     ) -> (Option<Vec<u32>>, Vec<(&Node, i32)>) {
-        match self {
-            Node::Branch(bb, children) => {
-                // if let Some(layers) = layers_option {
-                //     let mut contains_layer = false;
-                //     for layer in l {
-                //         if layers.contains(&layer) {
-                //             contains_layer = true;
-                //             break;
-                //         }
-                //     }
-                //     if !contains_layer {
-                //         return None;
-                //     }
-                // }
-                let mut result: (Option<Vec<u32>>, Vec<(&Node, i32)>) = (None, Vec::new());
-                // if depth > 1 {
-                if bb.is_colliding(r) {
-                    for child in children {
-                        // let child_results = ;
-                        let mut child_data = child.debug_query_rect(r, layers_option, depth + 1);
-                        result.1.append(&mut child_data.1);
-                        if let Some(mut child_collisions) = child_data.0 {
-                            if let Some(ref mut result_vec) = result.0 {
-                                result_vec.append(&mut child_collisions);
-                            } else {
-                                result.0 = Some(child_collisions);
-                            }
+        let mut result: (Option<Vec<u32>>, Vec<(&'a Node, i32)>) = (None, Vec::new());
+        self.traverse_rect(
+            r,
+            layers_option,
+            &mut |node, depth| {
+                result.1.push((&node, depth));
+                match node {
+                    Node::Branch(_, _) => {}
+                    Node::Fruit(_, other_data, _) => {
+                        if let Some(ref mut result_vec) = result.0 {
+                            result_vec.push(*other_data);
+                        } else {
+                            result.0 = Some(vec![*other_data]);
                         }
                     }
-                    // } else {
-                    //     result.par_extend(
-                    //         children
-                    //             .into_par_iter()
-                    //             .map(|child| child.query_rect(r, layers_option, depth + 1))
-                    //             .flatten(),
-                    //     )
-                    // }
-                    result
-                } else {
-                    (None, vec![(self, depth)])
                 }
-            }
-            Node::Fruit(bb, other_data, l) => {
-                let contains_layer = if let Some(layers) = layers_option {
-                    l.iter().any(|layer| layers.contains(layer))
-                } else {
-                    true
-                };
-                if contains_layer && bb.is_colliding(r) {
-                    (Some(vec![*other_data]), vec![(self, depth)])
-                } else {
-                    (None, vec![(self, depth)])
-                }
-            }
-        }
+                depth.clone() + 1
+            },
+            0i32,
+        );
+        result
     }
 
     fn update(&mut self, old: (&collider::AABB, u32), new: (&collider::AABB, u32)) -> bool {
@@ -377,6 +315,55 @@ impl Node {
                     return true;
                 }
             }
+        }
+        false
+    }
+
+    fn delete(&mut self, old: (&collider::AABB, u32)) -> bool {
+        match self {
+            Node::Branch(bb, children) => {
+                if bb.is_inside(old.0) {
+                    match &mut *children[0] {
+                        Node::Branch(_, children2) => {
+                            for c in children2 {
+                                if c.delete(old) {
+                                    // self.shrink();
+                                    // children[0].shrink();
+                                    return true;
+                                }
+                            }
+                        }
+                        Node::Fruit(bb2, id, _) => {
+                            if bb2.is_inside(old.0) {
+                                if *id == old.1 {
+                                    *self = *children[1].clone();
+                                    return true;
+                                }
+                            }
+                        }
+                    }
+                    match &mut *children[1] {
+                        Node::Branch(_, children2) => {
+                            for c in children2 {
+                                if c.delete(old) {
+                                    // self.shrink();
+                                    // children[0].shrink();
+                                    return true;
+                                }
+                            }
+                        }
+                        Node::Fruit(bb2, id, _) => {
+                            if bb2.is_inside(old.0) {
+                                if *id == old.1 {
+                                    *self = *children[0].clone();
+                                    return true;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            Node::Fruit(_, _, _) => {}
         }
         false
     }
@@ -458,15 +445,15 @@ impl BVHTree {
         self.root_node.get_children()
     }
 
-    pub fn query_point(&self, p: Vector2, layers_option: Option<&HashSet<i8>>) -> Vec<u32> {
+    pub fn query_point(&self, p: &Vector2, layers_option: Option<&HashSet<i8>>) -> Vec<u32> {
         self.root_node
             .query_point(p, layers_option)
             .unwrap_or_default()
     }
 
-    pub fn query_rect(&self, r: collider::AABB, layers_option: Option<&HashSet<i8>>) -> Vec<u32> {
+    pub fn query_rect(&self, r: &collider::AABB, layers_option: Option<&HashSet<i8>>) -> Vec<u32> {
         self.root_node
-            .query_rect(&r, layers_option, 0)
+            .query_rect(r, layers_option)
             .unwrap_or_default()
     }
 
@@ -475,15 +462,15 @@ impl BVHTree {
         r: &collider::AABB,
         layers_option: Option<&HashSet<i8>>,
     ) -> (Option<Vec<u32>>, Vec<(&Node, i32)>) {
-        self.root_node.debug_query_rect(r, layers_option, 0)
+        self.root_node.debug_query_rect(r, layers_option)
     }
 
     pub fn debug_query_point(
         &self,
-        p: Vector2,
+        p: &Vector2,
         layers_option: Option<&HashSet<i8>>,
     ) -> (Option<Vec<u32>>, Vec<(&Node, i32)>) {
-        self.root_node.debug_query_point(p, layers_option, 0)
+        self.root_node.debug_query_point(p, layers_option)
     }
 
     pub fn update(&mut self, old: (&collider::AABB, u32), new: (&collider::AABB, u32)) {
@@ -502,6 +489,10 @@ impl BVHTree {
     ) {
         self.root_node.insert(new);
         // println!("{:#?}", result);
+    }
+
+    pub fn delete(&mut self, old: (&collider::AABB, u32)) {
+        self.root_node.delete(old);
     }
 
     pub fn shrink(&mut self) {

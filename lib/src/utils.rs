@@ -1,5 +1,6 @@
 use crate::bvh::BVHTree;
 use crate::collider;
+use crate::Entities;
 use crate::World;
 use crate::Write;
 use crate::MIN_BHV_UPDATE_TIME;
@@ -48,12 +49,14 @@ pub fn register_ent(
         HashSet<i8>,
     ),
     world: &mut World,
-    time_since_bvh_update: &mut f32,
 ) {
     let mut bvh_write: Write<Option<BVHTree>> = world.system_data();
     if let Some(ref mut bvh) = *bvh_write {
         bvh.insert(&tuple_data);
-    } else {
-        *time_since_bvh_update = 1f32 + MIN_BHV_UPDATE_TIME;
     }
+}
+
+pub fn delete_ent(ent: (&collider::AABB, u32), ents: Entities, bvh: &mut BVHTree) {
+    ents.delete(ents.entity(ent.1)).unwrap();
+    bvh.delete(ent);
 }
