@@ -15,8 +15,8 @@ use iron_oxide::Join;
 
 const INITIAL_VELOCITY: f32 = 400f32;
 const RADIUS: f32 = 10.0f32;
-const DEBUG_BVH: bool = false;
-const DEBUG_AABB: bool = false;
+const DEBUG_BVH: bool = true;
+const DEBUG_AABB: bool = true;
 
 struct EntCount(usize);
 struct MousePos(iron_oxide::Vector2);
@@ -50,28 +50,30 @@ fn main() {
         if l_m_down {
             let mut modified = false;
             let pos = data.2.read_resource::<MousePos>().0;
-            if let Some(bvh) = &mut *data.2.write_resource::<Option<BVHTree>>() {
-                let ents = bvh.query_point(&pos, None);
-                if ents.len() > 0 {
-                    let id = ents[0];
-                    let ent_data: (
-                        iron_oxide::ReadStorage<iron_oxide::utils::Position>,
-                        iron_oxide::ReadStorage<iron_oxide::collider::Collider>,
-                        iron_oxide::Entities,
-                    ) = data.2.system_data();
-                    let ent_o = (&ent_data.0, &ent_data.1, &ent_data.2)
-                        .join()
-                        .find(|e| e.2.id() == id);
-                    if let Some(ent) = ent_o {
-                        let bb = ent.1.get_bounding_box(&ent.0 .0);
-                        iron_oxide::utils::delete_ent((&bb, id), ent_data.2, bvh);
-                        modified = true;
+            {
+                let bvh_option = &mut *data.2.write_resource::<Option<BVHTree>>();
+                if let Some(bvh) = bvh_option {
+                    let ents = bvh.query_point(&pos, None);
+                    if ents.len() > 0 {
+                        let id = ents[0];
+                        let entities: 
+                            iron_oxide::Entities
+                         = data.2.system_data();
+                        
+                            println!("called");
+                            iron_oxide::utils::delete_ent(id, entities, bvh);
+                            modified = true;
+                        
                     }
                 }
+
+                // if modified {
+                    // *bvh_option = None;
+                // }
             }
             if modified {
                 println!("deleted");
-                data.2.maintain();
+                // data.2.maintain();
             }
         } else {
             if data.0.is_key_pressed(iron_oxide::KeyboardKey::KEY_R) {
@@ -81,8 +83,8 @@ fn main() {
                 data.2.delete_all();
                 data.2.maintain();
             } else {
-                if data.0.get_fps() > 100 {
-                    // if data.0.is_key_down(iron_oxide::KeyboardKey::KEY_SPACE) {
+                // if data.0.get_fps() > 100 {
+                    if data.0.is_key_down(iron_oxide::KeyboardKey::KEY_SPACE) {
                     if data.0.get_time() - timer > 0.01 {
                         gen_enity(&mut data.2, &mut rng);
                     }
