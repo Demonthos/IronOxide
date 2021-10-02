@@ -1,5 +1,6 @@
 extern crate iron_oxide;
 
+use iron_oxide::bvh::BVHTree;
 use iron_oxide::Builder;
 use iron_oxide::IndexedParallelIterator;
 use iron_oxide::IntoParallelRefMutIterator;
@@ -13,8 +14,8 @@ use iron_oxide::Color;
 use iron_oxide::Join;
 
 const INITIAL_VELOCITY: f32 = 400f32;
-const RADIUS: f32 = 5.0f32;
-const DEBUG_BVH: bool = true;
+const RADIUS: f32 = 10.0f32;
+const DEBUG_BVH: bool = false;
 const DEBUG_AABB: bool = false;
 
 struct EntCount(usize);
@@ -23,7 +24,7 @@ struct MousePos(iron_oxide::Vector2);
 /// update loop
 // 16000 particles 100fps
 fn main() {
-    let mut builder = iron_oxide::build();
+    let builder = iron_oxide::build();
 
     let mut data = iron_oxide::init(builder);
     let timer = data.0.get_time();
@@ -33,23 +34,59 @@ fn main() {
 
     let mut rng = iron_oxide::rand::thread_rng();
 
-    for _ in 0..1 {
-        gen_enity(&mut data.2, &mut rng, &mut data.4);
-    }
+    // for _ in 0..1 {
+    //     gen_enity(&mut data.2, &mut rng, &mut data.4);
+    // }
 
     while !data.0.window_should_close() {
         let l_m_down = data
             .0
-            .is_mouse_button_down(iron_oxide::MouseButton::MOUSE_RIGHT_BUTTON);
+            .is_mouse_button_down(iron_oxide::MouseButton::MOUSE_LEFT_BUTTON);
 
         {
             data.2.write_resource::<MousePos>().0 = data.0.get_mouse_position();
         }
 
-        if data.0.get_fps() > 100 {
-            // if data.0.is_key_down(iron_oxide::KeyboardKey::KEY_SPACE) {
-            if data.0.get_time() - timer > 0.01 {
-                gen_enity(&mut data.2, &mut rng, &mut data.4);
+        if l_m_down {
+            let mut modified = false;
+            let pos = data.2.read_resource::<MousePos>().0;
+            if let Some(bvh) = &mut *data.2.write_resource::<Option<BVHTree>>() {
+                let ents = bvh.query_point(&pos, None);
+                if ents.len() > 0 {
+                    let id = ents[0];
+                    let ent_data: (
+                        iron_oxide::ReadStorage<iron_oxide::utils::Position>,
+                        iron_oxide::ReadStorage<iron_oxide::collider::Collider>,
+                        iron_oxide::Entities,
+                    ) = data.2.system_data();
+                    let ent_o = (&ent_data.0, &ent_data.1, &ent_data.2)
+                        .join()
+                        .find(|e| e.2.id() == id);
+                    if let Some(ent) = ent_o {
+                        let bb = ent.1.get_bounding_box(&ent.0 .0);
+                        iron_oxide::utils::delete_ent((&bb, id), ent_data.2, bvh);
+                        modified = true;
+                    }
+                }
+            }
+            if modified {
+                println!("deleted");
+                data.2.maintain();
+            }
+        } else {
+            if data.0.is_key_pressed(iron_oxide::KeyboardKey::KEY_R) {
+                data.2.write_resource::<EntCount>().0 = 0;
+                *data.2.write_resource::<Option<iron_oxide::bvh::BVHTree>>() = None;
+
+                data.2.delete_all();
+                data.2.maintain();
+            } else {
+                if data.0.get_fps() > 100 {
+                    // if data.0.is_key_down(iron_oxide::KeyboardKey::KEY_SPACE) {
+                    if data.0.get_time() - timer > 0.01 {
+                        gen_enity(&mut data.2, &mut rng);
+                    }
+                }
             }
         }
         iron_oxide::update(&mut data, draw);
@@ -57,12 +94,6 @@ fn main() {
 }
 
 fn draw(world: &mut iron_oxide::World, d: &mut iron_oxide::prelude::RaylibDrawHandle) {
-    // if rl.is_key_pressed(iron_oxide::KeyboardKey::KEY_R) {
-    //     entity_count = 0;
-    //     world.delete_all();
-    //     world.maintain();
-    // }
-
     // if rl.is_key_pressed(iron_oxide::KeyboardKey::KEY_SPACE) {
     //     timer = rl.get_time();
     // }
@@ -141,7 +172,7 @@ fn draw(world: &mut iron_oxide::World, d: &mut iron_oxide::prelude::RaylibDrawHa
             let bvh_read: iron_oxide::Read<Option<iron_oxide::bvh::BVHTree>> = world.system_data();
             if let Some(bvh_root) = &*bvh_read {
                 let p = world.read_resource::<MousePos>().0;
-                for node in bvh_root.debug_query_point(p, None).1 {
+                for node in bvh_root.debug_query_point(&p, None).1 {
                     let rect;
                     match node.0 {
                         iron_oxide::bvh::Node::Branch(bb, _) => rect = bb,
@@ -151,7 +182,7 @@ fn draw(world: &mut iron_oxide::World, d: &mut iron_oxide::prelude::RaylibDrawHa
                     cost += 1;
                     let mut color =
                         iron_oxide::Color::color_from_hsv(node.1 as f32 * 10.0, 1.0, 1.0);
-                    color.a = 50;
+                    color.a = 100;
                     d.draw_rectangle(
                         rect.lx as i32,
                         rect.ly as i32,
@@ -179,11 +210,7 @@ fn draw(world: &mut iron_oxide::World, d: &mut iron_oxide::prelude::RaylibDrawHa
     );
 }
 
-fn gen_enity(
-    world: &mut iron_oxide::World,
-    rng: &mut impl iron_oxide::rand::Rng,
-    bvh_update: &mut f32,
-) {
+fn gen_enity(world: &mut iron_oxide::World, rng: &mut impl iron_oxide::rand::Rng) {
     {
         let x_size;
         let y_size;
@@ -213,11 +240,9 @@ fn gen_enity(
         }
         let collider = iron_oxide::collider::Collider {
             // shape: iron_oxide::collider::Shape::RectangeCollider {
-            //     size: iron_oxide::Vector2::one() * radius * 20.0,
+            //     size: iron_oxide::Vector2::one() * radius,
             // },
-            shape: iron_oxide::collider::Shape::CircleCollider {
-                radius: radius * 1.0,
-            },
+            shape: iron_oxide::collider::Shape::CircleCollider { radius: radius },
             physics_collider: true,
         };
 
@@ -226,15 +251,15 @@ fn gen_enity(
             .with(iron_oxide::utils::Position(position))
             .with(particle_physics)
             .with(collider.clone())
-            .with(iron_oxide::renderer::Renderer::RectangeRenderer {
-                size: iron_oxide::Vector2::new(radius * 2f32, radius * 2f32),
+            // .with(iron_oxide::renderer::Renderer::RectangeRenderer {
+            //     size: iron_oxide::Vector2::new(radius * 2f32, radius * 2f32),
+            //     color: Color::new(0, 0, 0, 255),
+            // })
+            .with(iron_oxide::renderer::Renderer::CircleRenderer {
+                radius,
                 color: Color::new(0, 0, 0, 255),
             })
             .with(iron_oxide::utils::Collisions(Vec::new()))
-            // .with(iron_oxide::renderer::Renderer::CircleRenderer {
-            //     radius,
-            //     color: Color::new(0, 0, 0, 255),
-            // })
             .build();
 
         iron_oxide::utils::register_ent(
@@ -246,7 +271,6 @@ fn gen_enity(
                 HashSet::new(),
             ),
             world,
-            bvh_update,
         );
     }
 }
