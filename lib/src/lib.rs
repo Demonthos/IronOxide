@@ -254,7 +254,7 @@ pub fn build<'a, 'b>() -> (RaylibHandle, RaylibThread, World, DispatcherBuilder<
         .with(UpdatePhysics, "update_physics", &[])
         .with(CollideBounds, "collide_bounds", &["update_physics"])
         .with(CollideEnities, "collide_entities", &["update_physics"])
-        .with(ShrinkBvh, "shrink_bvh", &["update_physics"]);
+        .with(ShrinkBvh, "shrink_bvh", &[]);
     (rl, thread, world, dispatcher)
 }
 

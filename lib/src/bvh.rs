@@ -36,7 +36,7 @@ fn split_at_mid(mut v: Vec<EntityData>, x_axis: bool) -> (Vec<EntityData>, Vec<E
     (start, end)
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Node {
     Branch(collider::AABB, [Box<Node>; 2]),
     Fruit(collider::AABB, u32, HashSet<i8>),
@@ -300,7 +300,7 @@ impl Node {
     fn update(&mut self, old: (&collider::AABB, u32), new: (&collider::AABB, u32)) -> bool {
         match self {
             Node::Branch(bb, children) => {
-                if bb.is_inside(old.0) {
+                if bb.contains(old.0, -0.001) {
                     for c in children {
                         if c.update(old, new) {
                             return true;
@@ -319,53 +319,33 @@ impl Node {
         false
     }
 
-    fn delete(&mut self, old: (&collider::AABB, u32)) -> bool {
-        match self {
+    fn delete(&mut self, old: u32) -> (bool, bool) {
+        match self{
             Node::Branch(bb, children) => {
-                if bb.is_inside(old.0) {
-                    match &mut *children[0] {
-                        Node::Branch(_, children2) => {
-                            for c in children2 {
-                                if c.delete(old) {
-                                    // self.shrink();
-                                    // children[0].shrink();
-                                    return true;
-                                }
-                            }
-                        }
-                        Node::Fruit(bb2, id, _) => {
-                            if bb2.is_inside(old.0) {
-                                if *id == old.1 {
-                                    *self = *children[1].clone();
-                                    return true;
-                                }
-                            }
-                        }
+                let result = children[0].delete(old);
+                if result.1{
+                    if result.0{
+                        *self = *children[1].clone();
+                        println!("modified");
                     }
-                    match &mut *children[1] {
-                        Node::Branch(_, children2) => {
-                            for c in children2 {
-                                if c.delete(old) {
-                                    // self.shrink();
-                                    // children[0].shrink();
-                                    return true;
-                                }
-                            }
-                        }
-                        Node::Fruit(bb2, id, _) => {
-                            if bb2.is_inside(old.0) {
-                                if *id == old.1 {
-                                    *self = *children[0].clone();
-                                    return true;
-                                }
-                            }
-                        }
+                    return (false, true);
+                }
+                let result = children[1].delete(old);
+                if result.1{
+                    if result.0{
+                        *self = *children[0].clone();
+                        println!("modified");
                     }
+                    return (false, true);
                 }
             }
-            Node::Fruit(_, _, _) => {}
+            Node::Fruit(_, id, _) => {
+                if *id == old {
+                    return (true, true);
+                }
+            }
         }
-        false
+        (false, false)
     }
 
     fn insert(
@@ -491,7 +471,7 @@ impl BVHTree {
         // println!("{:#?}", result);
     }
 
-    pub fn delete(&mut self, old: (&collider::AABB, u32)) {
+    pub fn delete(&mut self, old: u32) {
         self.root_node.delete(old);
     }
 

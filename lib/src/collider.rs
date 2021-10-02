@@ -102,7 +102,7 @@ impl Shape {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct AABB {
     pub lx: f32,
     pub rx: f32,
@@ -163,7 +163,7 @@ impl AABB {
             && (map[3] || self.ly <= other.ry)
     }
 
-    pub fn is_inside(&self, other: &AABB) -> bool {
-        self.rx >= other.rx && self.lx <= other.lx && self.ry >= other.ry && self.ly <= other.ly
+    pub fn contains(&self, other: &AABB, epsilon: f32) -> bool {
+        self.rx - other.rx >= -epsilon && self.lx - other.lx <= -epsilon && self.ry - other.ry >= -epsilon && self.ly - other.ly <= -epsilon
     }
 }

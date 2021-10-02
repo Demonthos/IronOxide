@@ -56,7 +56,7 @@ pub fn register_ent(
     }
 }
 
-pub fn delete_ent(ent: (&collider::AABB, u32), ents: Entities, bvh: &mut BVHTree) {
-    ents.delete(ents.entity(ent.1)).unwrap();
+pub fn delete_ent(ent: u32, ents: Entities, bvh: &mut BVHTree) {
+    ents.delete(ents.entity(ent)).unwrap();
     bvh.delete(ent);
 }
