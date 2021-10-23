@@ -91,10 +91,10 @@ impl Shape {
     fn get_bounding_box(&self, pos: &Vector2) -> AABB {
         match self {
             Shape::CircleCollider { radius } => AABB {
-                lx: pos.x - radius,
-                rx: pos.x + radius,
-                ly: pos.y - radius,
-                ry: pos.y + radius,
+                lx: pos.x,
+                rx: pos.x + 2.0 * radius,
+                ly: pos.y,
+                ry: pos.y + 2.0 * radius,
             },
             Shape::RectangeCollider { size } => AABB {
                 lx: pos.x,

@@ -1,13 +1,15 @@
 #[macro_use]
 extern crate lazy_static;
 pub use rand;
+pub use raylib;
 pub use raylib::prelude::*;
 pub use rayon::prelude::*;
 pub use specs::Dispatcher;
 pub use specs::DispatcherBuilder;
+
 pub use specs::{
-    Builder, Entities, Join, ParJoin, Read, ReadStorage, System, World, WorldExt, Write,
-    WriteStorage,
+    Builder, Entities, Join, LazyUpdate, ParJoin, Read, ReadStorage, System, World, WorldExt,
+    Write, WriteStorage,
 };
 use std::collections::HashSet;
 
@@ -288,12 +290,6 @@ pub fn update<'a, 'b>(
 ) {
     let (rl, thread, world, dispatcher, time_since_bvh_update) = state;
 
-    {
-        let mut delta = world.write_resource::<utils::Delta>();
-        *delta = utils::Delta(rl.get_frame_time());
-        *time_since_bvh_update += delta.0;
-    }
-
     // update screen size
     if rl.is_window_resized() {
         let mut size = world.write_resource::<[i32; 2]>();
@@ -301,9 +297,9 @@ pub fn update<'a, 'b>(
     }
 
     world.maintain();
-    dispatcher.dispatch(world);
 
     // update bvh
+    // this must happen after maintain (so that deletes get processed) and before updates (no new deletes)
     {
         let bvh_data: BvhData = world.system_data();
         let mut bvh_write: Write<Option<bvh::BVHTree>> = world.system_data();
@@ -313,6 +309,8 @@ pub fn update<'a, 'b>(
             *time_since_bvh_update = 0f32;
         }
     }
+
+    dispatcher.dispatch(world);
 
     // draw everything
     {
@@ -336,6 +334,12 @@ pub fn update<'a, 'b>(
         callback(world, &mut d);
 
         d.draw_fps(0, 0);
+    }
+
+    {
+        let mut delta = world.write_resource::<utils::Delta>();
+        *delta = utils::Delta(rl.get_frame_time());
+        *time_since_bvh_update += delta.0;
     }
 }
 

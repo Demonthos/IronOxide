@@ -1,8 +1,5 @@
 use crate::utils::Position;
-use crate::ReadStorage;
-use crate::System;
 use raylib::prelude::*;
-use specs::WriteExpect;
 
 use specs::{Component, VecStorage};
 
@@ -15,7 +12,7 @@ pub enum Renderer {
 }
 
 impl Renderer {
-    pub fn render(&self, d: &mut RaylibDrawHandle, position: &Position) {
+    pub fn render(&self, d: &mut impl raylib::core::drawing::RaylibDraw, position: &Position) {
         match self {
             Renderer::CircleRenderer { radius, color } => {
                 d.draw_circle_v(position.0 + (Vector2::one() * (*radius)), *radius, color);

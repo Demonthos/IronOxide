@@ -5,7 +5,6 @@ use crate::World;
 use crate::Write;
 use raylib::core::math::Vector2;
 use specs::{Component, VecStorage};
-use std::collections::HashSet;
 
 #[derive(Debug, Clone, Component)]
 #[storage(VecStorage)]
@@ -49,7 +48,7 @@ pub fn register_ent(
     }
 }
 
-pub fn delete_ent(ent: u32, ents: Entities, bvh: &mut BVHTree) {
-    ents.delete(ents.entity(ent)).unwrap();
+pub fn delete_ent(ent: u32, ents: &mut Entities, bvh: &mut BVHTree) {
     bvh.delete(ent);
+    ents.delete(ents.entity(ent)).unwrap();
 }
