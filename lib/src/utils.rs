@@ -12,6 +12,10 @@ pub struct Position(pub Vector2);
 
 #[derive(Debug, Component)]
 #[storage(VecStorage)]
+pub struct Frozen;
+
+#[derive(Debug, Component)]
+#[storage(VecStorage)]
 pub struct Collisions(pub Vec<u32>);
 
 #[derive(Default)]

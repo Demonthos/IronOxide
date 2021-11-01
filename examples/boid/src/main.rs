@@ -230,6 +230,7 @@ fn draw(world: &mut iron_oxide::World, d: &mut iron_oxide::prelude::RaylibDrawHa
                             1.0,
                         );
                     }
+                    _ => ()
                 }
             }
             // if l_m_down {

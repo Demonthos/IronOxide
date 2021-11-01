@@ -57,17 +57,18 @@ impl<'a> System<'a> for UpdatePhysics {
         Read<'a, utils::Delta>,
         WriteStorage<'a, utils::Position>,
         WriteStorage<'a, physics::Physics>,
+        ReadStorage<'a, utils::Frozen>,
     );
 
-    fn run(&mut self, (mut bvh_tree, ents, col, delta, mut pos, mut phys): Self::SystemData) {
-        (&mut phys).par_join().for_each(|phys| {
+    fn run(&mut self, (mut bvh_tree, ents, col, delta, mut pos, mut phys, frozen): Self::SystemData) {
+        (&mut phys, !&frozen).par_join().for_each(|(phys, ())| {
             phys.velocity.y += GRAVITY;
             phys.velocity *= FRICTION;
         });
 
         // make this parrelel
         if let Some(ref mut bvh) = *bvh_tree {
-            for (pos, phys, col_m, ent) in (&mut pos, &mut phys, (&col).maybe(), &ents).join() {
+            for (pos, phys, col_m, ent, ()) in (&mut pos, &mut phys, (&col).maybe(), &ents, !&frozen).join() {
                 let old_pos = pos.0;
                 phys.update(&mut pos.0, delta.0);
                 // if old_pos.distance_to(pos.0) < 0.0000001 {
@@ -105,13 +106,14 @@ impl<'a> System<'a> for CollideBounds {
         WriteStorage<'a, utils::Position>,
         ReadStorage<'a, collider::Collider>,
         WriteStorage<'a, physics::Physics>,
+        ReadStorage<'a, utils::Frozen>,
     );
 
-    fn run(&mut self, (size, mut pos, col, mut phys): Self::SystemData) {
-        (&mut pos, &col, &mut phys)
+    fn run(&mut self, (size, mut pos, col, mut phys, frozen): Self::SystemData) {
+        (&mut pos, &col, &mut phys, !&frozen)
             .par_join()
-            .filter(|(_, col, _)| col.physics_collider)
-            .for_each(|(pos, col, phys)| {
+            .filter(|(_, col, _, ())| col.physics_collider)
+            .for_each(|(pos, col, phys, ())| {
                 let overlap_vec =
                     col.get_collision_bounds(&pos.0, [0.0, 0.0, size[0] as f32, size[1] as f32]);
                 if let Some(unwraped) = overlap_vec {
@@ -131,6 +133,7 @@ impl<'a> System<'a> for CollideEnities {
         WriteStorage<'a, physics::Physics>,
         Entities<'a>,
         WriteStorage<'a, utils::Collisions>,
+        ReadStorage<'a, utils::Frozen>,
     );
 
     fn run(&mut self, mut data: Self::SystemData) {
@@ -141,6 +144,7 @@ impl<'a> System<'a> for CollideEnities {
             (&mut data.3).maybe(),
             &data.4,
             &mut data.5,
+            !&data.6
         )
             .join()
             .collect::<Vec<_>>();
@@ -249,6 +253,7 @@ pub fn build<'a, 'b>() -> (RaylibHandle, RaylibThread, World, DispatcherBuilder<
     world.register::<physics::Physics>();
     world.register::<collider::Collider>();
     world.register::<renderer::Renderer>();
+    world.register::<utils::Frozen>();
     world.insert(utils::Delta(0.00));
     world.insert([rl.get_screen_width(), rl.get_screen_height()]);
     world.insert(bvh_tree);

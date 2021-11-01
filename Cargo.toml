@@ -4,7 +4,8 @@
 members = [
     "lib",
     "examples\\boid",
-    "examples\\simple_collisions"
+    "examples\\simple_collisions",
+    "examples\\platformer"
 ]
 
 [profile.release]

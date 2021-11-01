@@ -12,6 +12,7 @@ use iron_oxide::WorldExt;
 
 const INITIAL_VELOCITY: f32 = 400f32;
 
+struct Platform;
 struct EntCount(usize);
 struct MousePos(iron_oxide::Vector2);
 struct SettingsState {
@@ -56,34 +57,38 @@ fn main() {
         }
 
         {
-            let speed_delta = data.0.get_mouse_wheel_move() / 10.0;
-            speed += speed_delta;
+            type Data<'a> = (
+                iron_oxide::Entities<'a>,
+                iron_oxide::ReadStorage<'a, iron_oxide::utils::Frozen>,
+                iron_oxide::Read<'a, iron_oxide::LazyUpdate>,
+            );
+            if l_m_down {
+                let mut system_data: Data = data.2.system_data();
+                for ent in (
+                    &system_data.0,
+                    !&system_data.1,
+                )
+                .join(){
+                    system_data.2.insert(ent.0, iron_oxide::utils::Frozen);
+                }
+            }
+            else{
+                let mut system_data: Data = data.2.system_data();
+                for ent in (
+                    &system_data.0,
+                    &system_data.1,
+                )
+                .join(){
+                    system_data.2.remove::<iron_oxide::utils::Frozen>(ent.0);
+                }
+            }
+        }
+
+        {
             let mut delta = data.2.write_resource::<iron_oxide::utils::Delta>();
             *delta = iron_oxide::utils::Delta(data.0.get_frame_time() * speed);
         }
 
-        if l_m_down {
-            let mut modified = false;
-            let pos = data.2.read_resource::<MousePos>().0;
-            {
-                let bvh_option = &mut *data.2.write_resource::<Option<BVHTree>>();
-                if let Some(bvh) = bvh_option {
-                    let ents = bvh.query_point(&pos, &[true; iron_oxide::collider::LAYERS]);
-                    if ents.len() > 0 {
-                        let id = ents[0];
-                        let mut entities: iron_oxide::Entities = data.2.system_data();
-
-                        // println!("called");
-                        iron_oxide::utils::delete_ent(id, &mut entities, bvh);
-                        modified = true;
-                    }
-                }
-            }
-            if modified {
-                // println!("deleted");
-                // data.2.maintain();
-            }
-        }
         if data.0.is_key_pressed(iron_oxide::KeyboardKey::KEY_R) {
             speed = 1.0;
 
@@ -105,61 +110,6 @@ fn main() {
 
 fn draw(world: &mut iron_oxide::World, d: &mut iron_oxide::prelude::RaylibDrawHandle) {
     {
-        let mut state = world.write_resource::<SettingsState>();
-        state.debug_bvh = d.gui_check_box(
-            iron_oxide::Rectangle::new(0.0, 60.0, 20.0, 20.0),
-            // Some(&CString::new("debug bvh").unwrap()),
-            None,
-            state.debug_bvh,
-        );
-        state.debug_aabb = d.gui_check_box(
-            iron_oxide::Rectangle::new(0.0, 80.0, 20.0, 20.0),
-            // Some(&CString::new("debug aabb").unwrap()),
-            None,
-            state.debug_aabb,
-        );
-        state.show_velocity = d.gui_check_box(
-            iron_oxide::Rectangle::new(0.0, 100.0, 20.0, 20.0),
-            // Some(&CString::new("show velocity").unwrap()),
-            None,
-            state.show_velocity,
-        );
-        state.radius = d.gui_slider(
-            iron_oxide::Rectangle::new(0.0, 120.0, 100.0, 20.0),
-            // Some(&CString::new("radius").unwrap()),
-            None,
-            None,
-            state.radius,
-            1.0,
-            30.0,
-        );
-    }
-    // if rl.is_key_pressed(iron_oxide::KeyboardKey::KEY_SPACE) {
-    //     timer = rl.get_time();
-    // }
-
-    // let mouse_pos = rl.get_mouse_position();
-
-    // {
-    //     let mut system_data: (
-    //         iron_oxide::WriteStorage<iron_oxide::physics::Physics>,
-    //         iron_oxide::ReadStorage<iron_oxide::utils::Position>,
-    //     ) = world.system_data();
-    //     for (phys, pos) in (&mut system_data.0, &system_data.1).join() {
-    //         if rl.is_mouse_button_down(iron_oxide::MouseButton::MOUSE_LEFT_BUTTON) {
-    //             //     let mut vec_2d = (mouse_pos - pos.0).normalized() * 10000f32
-    //             //         / ((mouse_pos.x - pos.0.x) * (mouse_pos.x - pos.0.x)
-    //             //             + (mouse_pos.y - pos.0.y) * (mouse_pos.y - pos.0.y));
-    //             //     let temp = vec_2d.x;
-    //             //     vec_2d.x = -vec_2d.y;
-    //             //     vec_2d.y = temp;
-    //             //     phys.velocity += vec_2d;
-    //             phys.velocity += (mouse_pos - pos.0).normalized() * 20.0;
-    //         }
-    //     }
-    // }
-
-    {
         let mut system_data: iron_oxide::RenderingData = world.system_data();
         for data in (
             &mut system_data.0,
@@ -170,27 +120,6 @@ fn draw(world: &mut iron_oxide::World, d: &mut iron_oxide::prelude::RaylibDrawHa
             .join()
         {
             let (r, pos, phys, col) = data;
-            if let Some(p) = phys {
-                match r {
-                    iron_oxide::renderer::Renderer::CircleRenderer { radius: _, color } => {
-                        *color = iron_oxide::Color::color_from_hsv(
-                            p.velocity.angle_to(iron_oxide::Vector2::one()) * 2f32
-                                / std::f32::consts::PI.to_radians(),
-                            1.0,
-                            1.0,
-                        );
-                    }
-                    iron_oxide::renderer::Renderer::RectangeRenderer { size: _, color } => {
-                        *color = Color::color_from_hsv(
-                            p.velocity.angle_to(iron_oxide::Vector2::one()) * 2f32
-                                / std::f32::consts::PI.to_radians(),
-                            1.0,
-                            1.0,
-                        );
-                    }
-                    _ => ()
-                }
-            }
             // if l_m_down {
             if world.read_resource::<SettingsState>().debug_aabb {
                 if let Some(c) = col {

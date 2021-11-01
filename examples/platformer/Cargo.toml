@@ -1,5 +1,5 @@
 [package]
-name = "simple_collisions"
+name = "platformer"
 version = "0.1.0"
 authors = ["Evan Almloff"]
 
