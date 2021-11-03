@@ -320,7 +320,17 @@ pub fn update<'a, 'b>(
     // draw everything
     {
         let mut d = rl.begin_drawing(thread);
-        d.clear_background(Color::WHITE);
+        // d.clear_background(Color::WHITE);
+        {
+            let size = *world.read_resource::<[i32; 2]>();
+            d.draw_rectangle(
+                0,
+                0,
+                size[0],
+                size[1],
+                Color::new(0, 0, 0, 10)
+            );
+        }
 
         {
             let mut system_data: RenderingData = world.system_data();
