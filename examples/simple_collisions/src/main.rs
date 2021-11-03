@@ -96,7 +96,7 @@ fn main() {
         // if data.0.get_fps() > 100 {
         if data.0.is_key_down(iron_oxide::KeyboardKey::KEY_SPACE) {
             if data.0.get_time() - timer > 0.01 {
-                gen_enity(&mut data.2, &mut rng);
+                gen_enity(&mut data.2, &mut rng, &mut data.0, &data.1);
             }
         }
         iron_oxide::update(&mut data, draw);
@@ -269,7 +269,7 @@ fn draw(world: &mut iron_oxide::World, d: &mut iron_oxide::prelude::RaylibDrawHa
     );
 }
 
-fn gen_enity(world: &mut iron_oxide::World, rng: &mut impl iron_oxide::rand::Rng) {
+fn gen_enity(world: &mut iron_oxide::World, rng: &mut impl iron_oxide::rand::Rng, rl: &mut iron_oxide::RaylibHandle, rlth: &iron_oxide::RaylibThread) {
     {
         let x_size;
         let y_size;
@@ -283,7 +283,7 @@ fn gen_enity(world: &mut iron_oxide::World, rng: &mut impl iron_oxide::rand::Rng
             rng.gen::<f32>() * x_size as f32,
             rng.gen::<f32>() * y_size as f32,
         );
-        let mut particle_physics = iron_oxide::physics::Physics::new(radius);
+        let mut particle_physics = iron_oxide::physics::Physics::new(radius*radius);
         let mut rand_vec = iron_oxide::Vector2::new(0f32, 0f32);
         while rand_vec.length_sqr() == 0f32 {
             rand_vec = iron_oxide::Vector2::new(
@@ -326,7 +326,7 @@ fn gen_enity(world: &mut iron_oxide::World, rng: &mut impl iron_oxide::rand::Rng
                 radius,
                 color: Color::new(0, 0, 0, 255),
             })
-            // pub fn image(path: &str, size: Vector2, tint: Color, rl: &mut RaylibHandle, rlth: &RaylibThread) -> Renderer{
+            // .with(iron_oxide::renderer::Renderer::image("./circle.png", 100.0, iron_oxide::Color::BLANK, rl, rlth))
             .with(iron_oxide::utils::Collisions(Vec::new()))
             .build();
 
