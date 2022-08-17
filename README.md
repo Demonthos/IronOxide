@@ -1,6 +1,6 @@
 # IronOxide
 
-This is a game engine for rust in rust. I'm building it as a learning experience to try and better understand rust and what goes into a game engine.
+This is a game engine for rust in rust. I'm building it as a learning experience to try and better understand rust and what goes into making a game engine.
 
 Goals:
   1) extendable
@@ -11,5 +11,4 @@ Todo:
 - [x] use specs entity component system
 - [x] parrellize physics
 - [x] add collision callbacks
-- [ ] add lazy updating to bvh
-- [ ] more physics objects
+- [ ] polygon physics objects
