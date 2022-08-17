@@ -21,20 +21,7 @@ pub struct Collisions(pub Vec<u32>);
 #[derive(Default)]
 pub struct Delta(pub f32);
 
-// #[derive(Default)]
-// pub struct Inputs {
-//     mouse_pos: Vector2,
-//     keys_down: u32,
-// }
-
-// impl Inputs {
-//     fn new(rl: &RaylibHandle) -> Inputs {
-//         rl.get_mouse_position(),
-
-//     }
-// }
-
-pub fn to_tuple(v: Vector2) -> [f32; 2] {
+pub fn to_arr(v: Vector2) -> [f32; 2] {
     [v.x, v.y]
 }
 

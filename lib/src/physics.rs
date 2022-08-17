@@ -24,16 +24,6 @@ impl Physics {
         self.velocity *= f32::powf(FRICTION, delta);
     }
 
-    // pub fn update_x(&mut self, pos: &mut Vector2, delta: f32){
-    //     (*pos).x += self.velocity.x*delta;
-    //     self.velocity.x *= f32::powf(FRICTION, delta);
-    // }
-
-    // pub fn update_y(&mut self, pos: &mut Vector2, delta: f32){
-    //     (*pos).y += self.velocity.y*delta;
-    //     self.velocity.y *= f32::powf(FRICTION, delta);
-    // }
-
     pub fn resolve_collision(
         &mut self,
         pos: &mut Vector2,

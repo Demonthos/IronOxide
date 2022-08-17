@@ -9,7 +9,6 @@ type EntityData<'a> = (
 );
 
 fn split_at_mid(mut v: Vec<EntityData>, x_axis: bool) -> (Vec<EntityData>, Vec<EntityData>) {
-    // let mut v_clone = v.clone();
     let result: (&mut [EntityData], &mut EntityData, &mut [EntityData]);
     let half_size = (v.len() / 2usize) - 1;
 
@@ -26,9 +25,6 @@ fn split_at_mid(mut v: Vec<EntityData>, x_axis: bool) -> (Vec<EntityData>, Vec<E
     start.push(result.1.clone());
     let end = result.2.to_vec();
     assert_eq!(start.len() + end.len(), v.len());
-    // println!("{:?}", v.len());
-    // println!("{:?}", start.len());
-    // println!("{:?}", end.len());
     (start, end)
 }
 
@@ -47,7 +43,6 @@ impl Node {
             let owned = data.remove(0);
             Node::Fruit(owned.2, owned.3, owned.0.collision_layers)
         } else {
-            // let half_size = data.len() / 2usize;
             let mut total_bb = data[0].2.clone();
             for e in &data {
                 total_bb = total_bb.with_point(&e.1);
@@ -123,18 +118,6 @@ impl Node {
     ) {
         match self {
             Node::Branch(bb, children) => {
-                // if let Some(layers) = layers_option {
-                //     let mut contains_layer = false;
-                //     for (layer1, layer2) in l.iter().zip(layers) {
-                //         if *layer1 && *layer2 {
-                //             contains_layer = true;
-                //             break;
-                //         }
-                //     }
-                //     if !contains_layer {
-                //         return result;
-                //     }
-                // }
                 if collision_callback(bb, &p) {
                     let next_state = callback(self, current_state);
                     for child in children {
@@ -312,7 +295,6 @@ impl Node {
                 if result.1 {
                     if result.0 {
                         *self = *children[1].clone();
-                        // println!("modified");
                     }
                     return (false, true);
                 }
@@ -320,7 +302,6 @@ impl Node {
                 if result.1 {
                     if result.0 {
                         *self = *children[0].clone();
-                        // println!("modified");
                     }
                     return (false, true);
                 }
@@ -358,7 +339,6 @@ impl Node {
                 best.insert(new);
             }
             Node::Fruit(bb, _, _) => {
-                // let (new_branch_bb, extent_map) = get_union_with_map(&new_fruit_bb, bb);
                 let new_branch_bb = new_fruit_bb.get_union(bb);
                 *self = Node::Branch(
                     new_branch_bb,
@@ -366,7 +346,6 @@ impl Node {
                         Box::new(Node::Fruit(new_fruit_bb, new.3, new.0.collision_layers)),
                         Box::new(self.clone()),
                     ],
-                    // extent_map,
                 );
             }
         }
@@ -424,7 +403,6 @@ impl BVHTree {
 
     pub fn insert(&mut self, new: &(&collider::Collider, Vector2, collider::AABB, u32)) {
         self.root_node.insert(new);
-        // println!("{:#?}", result);
     }
 
     pub fn delete(&mut self, old: u32) {
@@ -434,16 +412,4 @@ impl BVHTree {
     pub fn shrink(&mut self) {
         self.root_node.shrink();
     }
-
-    // pub fn query_rect_batched<'a>(
-    //     &self,
-    //     rects: &Vec<(i32, [Vector2; 2], Option<&'a [bool; collider::LAYERS]>)>,
-    // ) -> HashMap<i32, Vec<u32>> {
-    //     superluminal_perf::begin_event("batched");
-    //     let r = self
-    //         .root_node
-    //         .query_rect_batched(&(rects.into_iter().collect()), 0);
-    //     superluminal_perf::end_event();
-    //     r
-    // }
 }

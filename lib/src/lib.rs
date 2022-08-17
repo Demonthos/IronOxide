@@ -18,15 +18,10 @@ pub mod collider;
 pub mod physics;
 pub mod renderer;
 pub mod utils;
-// mod tests;
 
-// const COLLISION_FRICTION: f32 = 0.998f32;
 const COLLISION_FRICTION: f32 = 1f32;
-// const FRICTION: f32 = 0.998f32;
 const FRICTION: f32 = 1f32;
-// const GRAVITY: f32 = 1f32;
 const GRAVITY: f32 = 0f32;
-// const MIN_BHV_UPDATE_TIME: f32 = 100f32;
 const MIN_BHV_UPDATE_TIME: f32 = 0.25f32;
 const WINDOW_SIZE: [i32; 2] = [1400, 1000];
 lazy_static! {
@@ -60,7 +55,10 @@ impl<'a> System<'a> for UpdatePhysics {
         ReadStorage<'a, utils::Frozen>,
     );
 
-    fn run(&mut self, (mut bvh_tree, ents, col, delta, mut pos, mut phys, frozen): Self::SystemData) {
+    fn run(
+        &mut self,
+        (mut bvh_tree, ents, col, delta, mut pos, mut phys, frozen): Self::SystemData,
+    ) {
         (&mut phys, !&frozen).par_join().for_each(|(phys, ())| {
             phys.velocity.y += GRAVITY;
             phys.velocity *= FRICTION;
@@ -68,7 +66,9 @@ impl<'a> System<'a> for UpdatePhysics {
 
         // make this parrelel
         if let Some(ref mut bvh) = *bvh_tree {
-            for (pos, phys, col_m, ent, ()) in (&mut pos, &mut phys, (&col).maybe(), &ents, !&frozen).join() {
+            for (pos, phys, col_m, ent, ()) in
+                (&mut pos, &mut phys, (&col).maybe(), &ents, !&frozen).join()
+            {
                 let old_pos = pos.0;
                 phys.update(&mut pos.0, delta.0);
                 // if old_pos.distance_to(pos.0) < 0.0000001 {
@@ -144,18 +144,12 @@ impl<'a> System<'a> for CollideEnities {
             (&mut data.3).maybe(),
             &data.4,
             &mut data.5,
-            !&data.6
+            !&data.6,
         )
             .join()
             .collect::<Vec<_>>();
 
         if let Some(ref bvh) = *bvh_tree {
-            // costly
-            // let old_data: Vec<_> = entity_data
-            //     .iter()
-            //     .map(|e| Some((e.0 .0, e.2.as_deref().cloned(), e.1.clone())))
-            //     .collect();
-
             let mut old_data = Vec::new();
 
             for e in &entity_data {
@@ -163,39 +157,6 @@ impl<'a> System<'a> for CollideEnities {
                 old_data.resize(id + 1, None);
                 old_data[id] = Some((e.0 .0, e.2.as_deref().cloned(), e.1.clone()));
             }
-
-            // let old_data: Vec<_> = entity_data.iter()
-            //     .map(|e| (e.0 .0, e.2.as_deref().cloned(), e.1.clone()))
-            //     .collect();
-
-            // let mut d = Vec::new();
-            // for (i, (e, old_pos)) in entity_data.into_iter().zip(old_positions).enumerate() {
-            //     let hs = &*HS1;
-            //     d.push((i as i32, e.1.get_bounding_box(&old_pos), Some(hs)));
-            // }
-            // bvh.query_rect_batched(&d);
-
-            // for i in 1..entity_data.len() + 1 {
-            //     let hs = &*HS1;
-
-            //     let (l, r) = entity_data.split_at_mut(i);
-            //     let p = &mut l[l.len() - 1];
-            //     let old_pos = &old_positions[i - 1];
-            //     let collisions = bvh.query_rect(p.1.get_bounding_box(&old_pos), Some(hs));
-
-            //     for p2_index in &collisions {
-            //         // make sure collisions are not handled twice
-            //         if p2_index >= &(i as u32) {
-            //             // println!("{:?}", p2_index);
-            //             let p2m = &mut r[(*p2_index) as usize - i];
-            //             let p2_pos = &old_positions[(*p2_index) as usize];
-            //             let overlap_vec = p.1.get_collision(&old_pos, &p2_pos, &p2m.1);
-            //             if let Some(unwraped) = overlap_vec {
-            //                 p.2.resolve_collision(&mut p.0 .0, &mut p2m.0 .0, &mut p2m.2, unwraped);
-            //             }
-            //         }
-            //     }
-            // }
 
             entity_data.into_par_iter().for_each(|ref mut p| {
                 let first_id = p.3.id();
@@ -207,9 +168,6 @@ impl<'a> System<'a> for CollideEnities {
                     .copied()
                     .collect();
                 for p2_id in &collisions {
-                    // if old_data[*p2_id as usize].is_none() {
-                    //     println!("{:#?}", *p2_id);
-                    // }
                     let p2 = old_data[*p2_id as usize].as_ref().unwrap();
                     let overlap_vec = p.1.get_collision(&old, &p2.0, &p2.2);
                     if let Some(unwraped) = overlap_vec {
@@ -310,7 +268,6 @@ pub fn update<'a, 'b>(
         let mut bvh_write: Write<Option<bvh::BVHTree>> = world.system_data();
         if *time_since_bvh_update > MIN_BHV_UPDATE_TIME || bvh_write.is_none() {
             *bvh_write = create_bvh(bvh_data);
-            // println!("{:?}", time_since_bvh_update);
             *time_since_bvh_update = 0f32;
         }
     }
@@ -320,17 +277,7 @@ pub fn update<'a, 'b>(
     // draw everything
     {
         let mut d = rl.begin_drawing(thread);
-        // d.clear_background(Color::WHITE);
-        {
-            let size = *world.read_resource::<[i32; 2]>();
-            d.draw_rectangle(
-                0,
-                0,
-                size[0],
-                size[1],
-                Color::new(0, 0, 0, 10)
-            );
-        }
+        d.clear_background(Color::WHITE);
 
         {
             let mut system_data: RenderingData = world.system_data();
@@ -364,9 +311,6 @@ pub fn create_bvh(entities: BvhData) -> Option<bvh::BVHTree> {
     for entity in (&entities.0, &entities.1, &entities.2).join() {
         let (ent, pos, col) = entity;
         let id = ent.id();
-        // let mut hs = HashSet::new();
-        // hs.insert(0);
-        // hs.insert(0);
         data.push((col, pos.0, col.get_bounding_box(&pos.0), id));
     }
 

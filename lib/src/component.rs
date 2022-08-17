@@ -15,7 +15,6 @@ struct TestComponent2 {
     x: i32,
 }
 
-// can panic
 #[derive(Debug)]
 struct ComponentSystem {
     inner: HashMap<TypeId, RefCell<Vec<RefCell<Box<dyn Any>>>>>,
@@ -45,32 +44,4 @@ impl ComponentSystem {
     fn get_all_ref<T: Any>(&self) -> Ref<Vec<RefCell<Box<dyn Any>>>> {
         self.inner.get(&TypeId::of::<T>()).unwrap().borrow()
     }
-
-    // fn get_multable_mut<'a, T: Any>(&self, component: RefMut<'a, Vec<RefCell<Box<dyn Any>>>>, indexes: Vec<usize>) -> Vec<RefMut<'a, Box<dyn Any>>>{
-    //     let mut results = Vec::new();
-    //     for index in indexes{
-    //         results.push(component[index].borrow_mut());
-    //     }
-    //     results
-    // }
-
-    // fn get_multable_ref<T: Any>(&self, index: usize) -> Ref<Box<dyn Any>>{
-    //     self.get_all_ref::<T>()[index].borrow()
-    // }
-}
-
-fn main() {
-    let mut cs = ComponentSystem {
-        inner: HashMap::new(),
-    };
-    cs.add_component::<TestComponent1>(TestComponent1 { x: 0 });
-    cs.add_component::<TestComponent2>(TestComponent2 { x: 0 });
-    let x = cs.get_all_mut::<TestComponent1>();
-    let y = x[0].borrow_mut();
-    let z = cs.get_all_mut::<TestComponent2>();
-    println!("{:#?}", x);
-    println!("{:#?}", y);
-    println!("{:#?}", z);
-
-    println!("{:#?}", cs);
 }

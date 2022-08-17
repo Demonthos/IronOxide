@@ -59,13 +59,11 @@ impl Shape {
                         return Some(collision_vec * (sum_r - dist));
                     }
                 }
-                Shape::RectangeCollider { size } => {}
+                Shape::RectangeCollider { size: _ } => todo!(),
             },
-            Shape::RectangeCollider { size } => match other {
-                Shape::CircleCollider {
-                    radius: other_radius,
-                } => {}
-                Shape::RectangeCollider { size: other_size } => {}
+            Shape::RectangeCollider { size: _ } => match other {
+                Shape::CircleCollider { radius: _ } => todo!(),
+                Shape::RectangeCollider { size: _ } => todo!(),
             },
         }
         None
