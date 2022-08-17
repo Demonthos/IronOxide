@@ -1,5 +1,7 @@
 extern crate iron_oxide;
 
+use std::ffi::CString;
+
 use iron_oxide::bvh::BVHTree;
 use iron_oxide::raylib::rgui::RaylibDrawGui;
 use iron_oxide::Builder;
@@ -94,23 +96,23 @@ fn draw(world: &mut iron_oxide::World, d: &mut iron_oxide::prelude::RaylibDrawHa
         let mut state = world.write_resource::<SettingsState>();
         state.debug_bvh = d.gui_check_box(
             iron_oxide::Rectangle::new(0.0, 60.0, 20.0, 20.0),
-            None,
+            Some(&CString::new("debug BVH").unwrap()),
             state.debug_bvh,
         );
         state.debug_aabb = d.gui_check_box(
             iron_oxide::Rectangle::new(0.0, 80.0, 20.0, 20.0),
-            None,
+            Some(&CString::new("debug bounding boxes").unwrap()),
             state.debug_aabb,
         );
         state.show_velocity = d.gui_check_box(
             iron_oxide::Rectangle::new(0.0, 100.0, 20.0, 20.0),
-            None,
+            Some(&CString::new("debug velocity").unwrap()),
             state.show_velocity,
         );
         state.radius = d.gui_slider(
             iron_oxide::Rectangle::new(0.0, 120.0, 100.0, 20.0),
-            None,
-            None,
+            Some(&CString::new("1px radius").unwrap()),
+            Some(&CString::new("30px radius").unwrap()),
             state.radius,
             1.0,
             30.0,

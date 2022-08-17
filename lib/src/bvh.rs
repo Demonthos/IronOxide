@@ -8,6 +8,7 @@ type EntityData<'a> = (
     u32,
 );
 
+/// Splits the list of entities into two lists by the mean position in the specified axis.
 fn split_at_mid(mut v: Vec<EntityData>, x_axis: bool) -> (Vec<EntityData>, Vec<EntityData>) {
     let result: (&mut [EntityData], &mut EntityData, &mut [EntityData]);
     let half_size = (v.len() / 2usize) - 1;
@@ -28,6 +29,9 @@ fn split_at_mid(mut v: Vec<EntityData>, x_axis: bool) -> (Vec<EntityData>, Vec<E
     (start, end)
 }
 
+/// A single node in the bounding volume hierarchy.
+/// The node can eighter contain children, or collision data.
+// for each node half of the bounding box data is shared with the parent node, so some effeciency improvements can be made here.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Node {
     Branch(collider::AABB, [Box<Node>; 2]),
@@ -35,14 +39,14 @@ pub enum Node {
 }
 
 impl Node {
-    // 1/2 of bounding box data is redundant!
-    // make more cache efficient
-    // add collision cache?
+    /// Creates a node from some entities
     fn new(mut data: Vec<EntityData>) -> Node {
+        // if there is only a single node, return a fruit node
         if data.len() <= 1 {
             let owned = data.remove(0);
             Node::Fruit(owned.2, owned.3, owned.0.collision_layers)
         } else {
+            // otherwise, split the list into two halves based on the axis with the widest position spread and create a branch node
             let mut total_bb = data[0].2.clone();
             for e in &data {
                 total_bb = total_bb.with_point(&e.1);
@@ -66,6 +70,7 @@ impl Node {
         }
     }
 
+    /// Shrink the bounding box to the smallest bounding box that contains all the entities in the node.
     fn shrink(&mut self) -> &collider::AABB {
         match self {
             Node::Branch(bb, children) => {
@@ -82,6 +87,7 @@ impl Node {
         }
     }
 
+    /// Get the ids of all of the entities under this node.
     fn get_children_id(&self) -> Vec<u32> {
         let mut sum_vec = Vec::new();
         match self {
@@ -97,6 +103,7 @@ impl Node {
         sum_vec
     }
 
+    /// Get the entities under this node.
     fn get_children(&self) -> Vec<&Node> {
         let mut sum_vec = Vec::new();
         if let Node::Branch(_, children) = self {
@@ -108,6 +115,7 @@ impl Node {
         sum_vec
     }
 
+    /// Traverse the tree based on a custom collision callback. Callback and current state allows state to be held as the tree is traversed.
     fn traverse<'a, T: Clone, K>(
         &'a self,
         p: &K,
@@ -140,6 +148,7 @@ impl Node {
         }
     }
 
+    /// Traverse any nodes that collide with a point.
     fn traverse_point<'a, T: Clone>(
         &'a self,
         p: &Vector2,
@@ -153,6 +162,7 @@ impl Node {
         self.traverse(p, layers, collide_point, callback, current_state);
     }
 
+    /// Traverse any nodes that collide with a bounding box.
     fn traverse_rect<'a, T: Clone>(
         &'a self,
         r: &collider::AABB,
@@ -166,6 +176,7 @@ impl Node {
         self.traverse(r, layers, collide_rect, callback, current_state);
     }
 
+    /// Find any entities that collide with a point.
     fn query_point(&self, p: &Vector2, layers: &[bool; collider::LAYERS]) -> Option<Vec<u32>> {
         let mut result: Option<Vec<u32>> = None;
         self.traverse_point(
@@ -186,6 +197,7 @@ impl Node {
         result
     }
 
+    /// Find any entities that collide with a point, and what nodes contain those enties. Useful for debugging purposes.
     fn debug_query_point<'a>(
         &'a self,
         p: &Vector2,
@@ -214,6 +226,7 @@ impl Node {
         result
     }
 
+    /// Find any entities that collide with a bounding box.
     fn query_rect(
         &self,
         r: &collider::AABB,
@@ -238,6 +251,7 @@ impl Node {
         result
     }
 
+    /// Find any entities that collide with a bounding box, and what nodes contain those enties. Useful for debugging purposes.
     fn debug_query_rect<'a>(
         &'a self,
         r: &collider::AABB,
@@ -266,6 +280,8 @@ impl Node {
         result
     }
 
+    /// Update a bounding box within the tree.
+    /// Note: This does will only grow the bounding boxes of the parent nodes, so it it important to call shrink regularly to maintain optimal bounding boxes for branch nodes.
     fn update(&mut self, old: (&collider::AABB, u32), new: (&collider::AABB, u32)) -> bool {
         match self {
             Node::Branch(bb, children) => {
@@ -288,6 +304,7 @@ impl Node {
         false
     }
 
+    /// Remove a entity from the tree.
     fn delete(&mut self, old: u32) -> (bool, bool) {
         match self {
             Node::Branch(_, children) => {
@@ -315,6 +332,7 @@ impl Node {
         (false, false)
     }
 
+    /// Create a new entity in the tree.
     fn insert(&mut self, new: &(&collider::Collider, Vector2, collider::AABB, u32)) {
         let new_fruit_bb = new.0.get_bounding_box(&new.1);
         match self {
@@ -359,28 +377,34 @@ pub struct BVHTree {
 }
 
 impl BVHTree {
+    /// Create a new BVHTree from the enties.
     pub fn new(data: Vec<EntityData>) -> BVHTree {
         BVHTree {
             root_node: Node::new(data),
         }
     }
 
+    /// Get all the entity ids in the tree.
     pub fn get_children_id(&self) -> Vec<u32> {
         self.root_node.get_children_id()
     }
 
+    /// Get all the entities in the tree.
     pub fn get_children(&self) -> Vec<&Node> {
         self.root_node.get_children()
     }
 
+    /// Get all the entity ids in the tree that collide with a point.
     pub fn query_point(&self, p: &Vector2, layers: &[bool; collider::LAYERS]) -> Vec<u32> {
         self.root_node.query_point(p, layers).unwrap_or_default()
     }
 
+    /// Get all the entity ids in the tree that collide with a bounding box.
     pub fn query_rect(&self, r: &collider::AABB, layers: &[bool; collider::LAYERS]) -> Vec<u32> {
         self.root_node.query_rect(r, layers).unwrap_or_default()
     }
 
+    /// Get all the entity ids along with the nodes that contian them in the tree that collide with a bounding box.
     pub fn debug_query_rect(
         &self,
         r: &collider::AABB,
@@ -389,6 +413,7 @@ impl BVHTree {
         self.root_node.debug_query_rect(r, layers)
     }
 
+    /// Get all the entity ids along with the nodes that contian them in the tree that collide with a point.
     pub fn debug_query_point(
         &self,
         p: &Vector2,
@@ -397,18 +422,22 @@ impl BVHTree {
         self.root_node.debug_query_point(p, layers)
     }
 
+    /// Update a bounding box within the tree.
     pub fn update(&mut self, old: (&collider::AABB, u32), new: (&collider::AABB, u32)) {
         self.root_node.update(old, new);
     }
 
+    /// Create a new entity in the tree.
     pub fn insert(&mut self, new: &(&collider::Collider, Vector2, collider::AABB, u32)) {
         self.root_node.insert(new);
     }
 
+    /// Remove a entity from the tree.
     pub fn delete(&mut self, old: u32) {
         self.root_node.delete(old);
     }
 
+    /// Shrink all of the bounding boxes in the tree to the minimal size.
     pub fn shrink(&mut self) {
         self.root_node.shrink();
     }

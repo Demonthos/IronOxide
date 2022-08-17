@@ -3,7 +3,7 @@ use raylib::prelude::*;
 
 use specs::{Component, VecStorage};
 
-/// currently only handles rendering primitives, but raylib supports sprites.
+/// Handles rendering entities.
 #[derive(Debug, Component)]
 #[storage(VecStorage)]
 pub enum Renderer {
@@ -23,6 +23,7 @@ pub enum Renderer {
 }
 
 impl Renderer {
+    ///     create a image renderer
     pub fn image(
         path: &str,
         scale: f32,
@@ -39,6 +40,7 @@ impl Renderer {
         }
     }
 
+    /// Render the entity at a location.
     pub fn render(&self, d: &mut impl raylib::core::drawing::RaylibDraw, position: &Position) {
         match self {
             Renderer::CircleRenderer { radius, color } => {

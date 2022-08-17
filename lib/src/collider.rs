@@ -15,6 +15,7 @@ pub struct Collider {
 }
 
 impl Collider {
+    /// Returns the collision vector if there is a collision, otherwise None.
     pub fn get_collision(
         &self,
         pos: &Vector2,
@@ -24,15 +25,18 @@ impl Collider {
         self.shape.get_collision(pos, other_pos, &other.shape)
     }
 
+    /// Returns the collision vector if there is a collision within the bounds (walls), otherwise None.
     pub fn get_collision_bounds(&self, pos: &Vector2, bounds: [f32; 4]) -> Option<Vector2> {
         self.shape.get_collision_bounds(pos, bounds)
     }
 
+    /// Returns the bounding box of the collider.
     pub fn get_bounding_box(&self, pos: &Vector2) -> AABB {
         self.shape.get_bounding_box(pos)
     }
 }
 
+/// A shape that can be used for collisions.
 #[derive(Debug, Clone)]
 pub enum Shape {
     CircleCollider { radius: f32 },
@@ -113,6 +117,7 @@ pub struct AABB {
 }
 
 impl AABB {
+    /// Expands the bounding box to contain the given point.
     pub fn with_point(&self, other: &Vector2) -> AABB {
         AABB {
             lx: self.lx.min(other.x),
@@ -122,6 +127,7 @@ impl AABB {
         }
     }
 
+    /// Combines two bounding boxes.
     pub fn get_union(&self, other: &AABB) -> AABB {
         AABB {
             lx: self.lx.min(other.lx),
@@ -131,6 +137,7 @@ impl AABB {
         }
     }
 
+    /// Get the intersection of two bounding boxes.
     pub fn get_intersection(&self, other: &AABB) -> AABB {
         AABB {
             lx: self.lx.max(other.lx),
@@ -140,6 +147,7 @@ impl AABB {
         }
     }
 
+    /// Get the minimum distance between the sides of two bounding boxes.
     pub fn get_dist(&self, other: &AABB) -> f32 {
         let center_x = (self.lx + self.rx) / 2.0;
         let center_y = (self.ly + self.ry) / 2.0;
@@ -154,10 +162,12 @@ impl AABB {
         (dx * dx).copysign(dx) + (dy * dy).copysign(dy)
     }
 
+    /// Check if the bounding box is intersecting with another bounding box.
     pub fn is_colliding(&self, other: &AABB) -> bool {
         self.rx >= other.lx && self.lx <= other.rx && self.ry >= other.ly && self.ly <= other.ry
     }
 
+    /// Check if the bounding box is intersecting with another bounding box on one of the listed sides.
     pub fn is_colliding_with_map(&self, other: &AABB, map: [bool; 4]) -> bool {
         (map[0] || self.rx >= other.lx)
             && (map[1] || self.lx <= other.rx)
@@ -165,6 +175,7 @@ impl AABB {
             && (map[3] || self.ly <= other.ry)
     }
 
+    /// Check if the bounding box contains the given bounding box.
     pub fn contains(&self, other: &AABB) -> bool {
         self.rx >= other.rx && self.lx <= other.lx && self.ry >= other.ry && self.ly <= other.ly
     }

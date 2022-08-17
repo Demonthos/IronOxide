@@ -42,6 +42,7 @@ pub type BvhData<'a> = (
     ReadStorage<'a, collider::Collider>,
 );
 
+/// Handles updating the physics of entities.
 struct UpdatePhysics;
 
 impl<'a> System<'a> for UpdatePhysics {
@@ -64,16 +65,13 @@ impl<'a> System<'a> for UpdatePhysics {
             phys.velocity *= FRICTION;
         });
 
-        // make this parrelel
+        // todo: make this parrelel
         if let Some(ref mut bvh) = *bvh_tree {
             for (pos, phys, col_m, ent, ()) in
                 (&mut pos, &mut phys, (&col).maybe(), &ents, !&frozen).join()
             {
                 let old_pos = pos.0;
                 phys.update(&mut pos.0, delta.0);
-                // if old_pos.distance_to(pos.0) < 0.0000001 {
-                //     println!("{:#?}, {:#?}, {:#?}, {}", phys, old_pos, pos.0, delta.0);
-                // }
                 if let Some(col) = col_m {
                     bvh.update(
                         (&col.get_bounding_box(&old_pos), ent.id() as u32),
@@ -85,19 +83,21 @@ impl<'a> System<'a> for UpdatePhysics {
     }
 }
 
+/// Handles shrinking the BVH tree after moving entities.
 struct ShrinkBvh;
 
 impl<'a> System<'a> for ShrinkBvh {
     type SystemData = Write<'a, Option<bvh::BVHTree>>;
 
     fn run(&mut self, mut bvh_tree: Self::SystemData) {
-        // make this parrelel
+        // todo: make this parrelel
         if let Some(ref mut bvh) = *bvh_tree {
             bvh.shrink();
         }
     }
 }
 
+/// Handles colliding with the walls.
 struct CollideBounds;
 
 impl<'a> System<'a> for CollideBounds {
@@ -123,6 +123,7 @@ impl<'a> System<'a> for CollideBounds {
     }
 }
 
+/// Handles colliding with other entities.
 struct CollideEnities;
 
 impl<'a> System<'a> for CollideEnities {
@@ -171,7 +172,7 @@ impl<'a> System<'a> for CollideEnities {
                     let p2 = old_data[*p2_id as usize].as_ref().unwrap();
                     let overlap_vec = p.1.get_collision(&old, &p2.0, &p2.2);
                     if let Some(unwraped) = overlap_vec {
-                        // make sure collisions are not handled twice, but we calculate it twice
+                        // this ensures collisions are not handled twice, but is does result in calculating it twice
                         if p.1.physics_collider && p2.2.physics_collider {
                             if let Some(ref mut phys) = p.2 {
                                 if let Some(p2_phys) = &p2.1 {
@@ -196,8 +197,6 @@ impl<'a> System<'a> for CollideEnities {
 pub fn build<'a, 'b>() -> (RaylibHandle, RaylibThread, World, DispatcherBuilder<'a, 'b>) {
     let (rl, thread) = raylib::init()
         .resizable()
-        // .transparent()
-        // .undecorated()
         .size(WINDOW_SIZE[0], WINDOW_SIZE[1])
         .title("Iron Oxide Engine")
         .build();
@@ -262,7 +261,7 @@ pub fn update<'a, 'b>(
     world.maintain();
 
     // update bvh
-    // this must happen after maintain (so that deletes get processed) and before updates (no new deletes)
+    // this must happen after maintain (so that deletes get processed) and before updates (so that no new deletes are queued)
     {
         let bvh_data: BvhData = world.system_data();
         let mut bvh_write: Write<Option<bvh::BVHTree>> = world.system_data();
@@ -298,6 +297,7 @@ pub fn update<'a, 'b>(
         d.draw_fps(0, 0);
     }
 
+    // update the delta time
     {
         let mut delta = world.write_resource::<utils::Delta>();
         *delta = utils::Delta(rl.get_frame_time());
@@ -305,6 +305,7 @@ pub fn update<'a, 'b>(
     }
 }
 
+/// Construct a new bvh tree
 pub fn create_bvh(entities: BvhData) -> Option<bvh::BVHTree> {
     let mut data = Vec::new();
 
